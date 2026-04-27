@@ -1,0 +1,56 @@
+[
+  {
+    "id": "task_04_001",
+    "description": "Generate final execution report",
+    "command": "python -c 'import json; tasks=json.load(open(\"data/tasks.json\")); completed=[t for t in tasks if t[\"status\"]==\"completed\"]; print(f\"Report: {len(completed)} tasks completed\")'",
+    "expected_output": "Report: [0-9]+ tasks completed",
+    "timeout": 300,
+    "retries": 3,
+    "metadata": {"category": "reporting", "format": "summary", "include_stats": true}
+  },
+  {
+    "id": "task_04_002",
+    "description": "Clean up temporary and cache files",
+    "command": "rm -rf data/cache/* data/temp/* 2>/dev/null && echo 'Cleanup completed successfully'",
+    "expected_output": "Cleanup completed successfully",
+    "timeout": 300,
+    "retries": 3,
+    "metadata": {"category": "cleanup", "patterns": [\"cache\", \"temp\"], "force": true}
+  },
+  {
+    "id": "task_04_003",
+    "description": "Archive completed task outputs",
+    "command": "tar -czf data/archives/task_outputs.tar.gz data/output/*.json 2>/dev/null && echo 'Archive created successfully'",
+    "expected_output": "Archive created successfully",
+    "timeout": 300,
+    "retries": 3,
+    "metadata": {"category": "archiving", "compression": "gzip", "source": "output"}
+  },
+  {
+    "id": "task_04_004",
+    "description": "Generate metrics summary CSV",
+    "command": "python -c 'import csv; with open(\"data/metrics.csv\", \"w\") as f: writer=csv.writer(f); writer.writerow([\"task_id\", \"status\", \"duration\"]); [writer.writerow([t[\"id\"], t[\"status\"], t[\"duration\"]]) for t in tasks]; print(\"Metrics CSV generated\")'",
+    "expected_output": "Metrics CSV generated",
+    "timeout": 300,
+    "retries": 3,
+    "metadata": {"category": "reporting", "format": "csv", "columns": [\"task_id\", \"status\", \"duration\"]}
+  },
+  {
+    "id": "task_04_005",
+    "description": "Remove old log files beyond retention policy",
+    "command": "find data/logs -name '*.log' -mtime +7 -delete 2>/dev/null && echo 'Old logs removed successfully'",
+    "expected_output": "Old logs removed successfully",
+    "timeout": 300,
+    "retries": 3,
+    "metadata": {"category": "cleanup", "retention_days": 7, "file_pattern": '*.log'}
+  },
+  {
+    "id": "task_04_006",
+    "description": "Final validation of all outputs",
+    "command": "python -c 'import json; outputs=json.load(open(\"data/outputs.json\")); assert all(o[\"valid\"] for o in outputs); print(\"All outputs validated successfully\")'",
+    "expected_output": "All outputs validated successfully",
+    "timeout": 300,
+    "retries": 3,
+    "metadata": {"category": "validation", "check_all": true, "strict_mode": true}
+  }
+]

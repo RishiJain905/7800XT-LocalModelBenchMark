@@ -1,0 +1,74 @@
+[
+  {
+    "id": "task_03_001",
+    "description": "Execute parallel data transformation jobs",
+    "command": "python -c 'import concurrent.futures; with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor: futures=[executor.submit(process_data, i) for i in range(8)]; [f.result() for f in futures]; print(\"Parallel execution completed\")'",
+    "expected_output": "Parallel execution completed",
+    "timeout": 300,
+    "retries": 3,
+    "metadata": {"category": "parallel_execution", "workers": 4, "tasks_per_batch": 8}
+  },
+  {
+    "id": "task_03_002",
+    "description": "Integrate multiple data sources with API calls",
+    "command": "python -c 'import requests; resp=requests.get(\"https://api.example.com/data\"); print(f\"Fetched {len(resp.json())} records\")'",
+    "expected_output": "Fetched [0-9]+ records",
+    "timeout": 300,
+    "retries": 3,
+    "metadata": {"category": "integration", "source": "external_api", "method": "GET"}
+  },
+  {
+    "id": "task_03_003",
+    "description": "Merge data from multiple JSON files",
+    "command": "python -c 'import json; files=[\"data/file1.json\", \"data/file2.json\", \"data/file3.json\"]; merged={}; [merged.update(json.load(open(f))) for f in files]; print(f\"Merged {len(merged)} entries\")'",
+    "expected_output": "Merged [0-9]+ entries",
+    "timeout": 300,
+    "retries": 3,
+    "metadata": {"category": "integration", "action": "merge", "format": "json"}
+  },
+  {
+    "id": "task_03_004",
+    "description": "Stream large dataset processing in chunks",
+    "command": "python -c 'import json; with open(\"data/large.json\") as f: data=[json.loads(line) for line in f]; print(f\"Processed {len(data)} records\")'",
+    "expected_output": "Processed [0-9]+ records",
+    "timeout": 300,
+    "retries": 3,
+    "metadata": {"category": "streaming", "chunk_size": 1000, "memory_efficient": true}
+  },
+  {
+    "id": "task_03_005",
+    "description": "Execute concurrent database queries",
+    "command": "python -c 'import concurrent.futures; import psycopg2; with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor: futures=[executor.submit(query_db, i) for i in range(4)]; [f.result() for f in futures]; print(\"Queries executed\")'",
+    "expected_output": "Queries executed",
+    "timeout": 300,
+    "retries": 3,
+    "metadata": {"category": "database", "driver": "psycopg2", "concurrent_queries": 4}
+  },
+  {
+    "id": "task_03_006",
+    "description": "Integrate with external ML model for predictions",
+    "command": "python -c 'import pickle; model=pickle.load(open(\"models/predictor.pkl\")); preds=model.predict(data); print(f\"Generated {len(preds)} predictions\")'",
+    "expected_output": "Generated [0-9]+ predictions",
+    "timeout": 300,
+    "retries": 3,
+    "metadata": {"category": "ml_integration", "model_type": "classifier", "output": "predictions"}
+  },
+  {
+    "id": "task_03_007",
+    "description": "Orchestrate multi-step pipeline with dependencies",
+    "command": "python -c 'import asyncio; async def main(): await asyncio.gather(step1(), step2(), step3()); print(\"Pipeline completed\")'; python -c 'import asyncio; asyncio.run(main())'",
+    "expected_output": "Pipeline completed",
+    "timeout": 300,
+    "retries": 3,
+    "metadata": {"category": "orchestration", "steps": 3, "async": true}
+  },
+  {
+    "id": "task_03_008",
+    "description": "Validate integration results with schema check",
+    "command": "python -c 'import json; schema=json.load(open(\"schemas/integration_schema.json\")); data=json.load(open(\"data/integrated.json\")); assert all(all(k in d for k in schema[\"required\"]) for d in data); print(\"Integration validated\")'",
+    "expected_output": "Integration validated",
+    "timeout": 300,
+    "retries": 3,
+    "metadata": {"category": "validation", "schema_file": "integration_schema.json", "required_fields": true}
+  }
+]
