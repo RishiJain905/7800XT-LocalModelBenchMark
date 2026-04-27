@@ -8,11 +8,10 @@ This task does not implement benchmark logic yet. It only creates the repo layou
 
 ## Required structure
 
-Create this structure:
+Create this structure at the repository root:
 
 ```text
-local-model-bench/
-│
+.
 ├─ configs/
 │
 ├─ tasks/
