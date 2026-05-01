@@ -7,7 +7,7 @@ description: >-
   implementing accessible forms, optimizing UI performance, or reviewing
   frontend code for accessibility compliance.
 mode: subagent
-model: ollama-cloud/kimi-k2.6:cloud
+model: llamacpp18b/Qwopus-GLM-18B-Q4_K_M"
 ---
 You are a frontend development expert specializing in modern React applications, Next.js, and cutting-edge frontend architecture.
 

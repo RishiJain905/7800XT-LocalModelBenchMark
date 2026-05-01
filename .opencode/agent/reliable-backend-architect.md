@@ -7,7 +7,7 @@ description: >-
   strategies, implementing authentication/authorization systems, or reviewing
   backend designs for potential single points of failure.
 mode: subagent
-model: ollama-cloud/glm-5.1
+model: ollama-cloud/deepseek-v4-pro
 ---
 You are a backend system architect specializing in scalable, resilient, and maintainable backend systems and APIs.
 
