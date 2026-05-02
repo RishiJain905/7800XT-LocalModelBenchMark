@@ -1,0 +1,56 @@
+suites:
+  - id: reasoning.math
+    name: Math
+    category: reasoning
+    task_file: benchmarks/reasoning/math.jsonl
+    description: Numeric and short-answer math prompts.
+    scoring: deterministic
+
+  - id: reasoning.real_world
+    name: Real-World Reasoning
+    category: reasoning
+    task_file: benchmarks/reasoning/real_world.jsonl
+    description: Multi-step real-world reasoning tasks.
+    scoring: deterministic
+
+  - id: reasoning.instruction_following
+    name: Instruction Following
+    category: reasoning
+    task_file: benchmarks/reasoning/instruction_following.jsonl
+    description: Tasks that test adherence to specific formatting or content instructions.
+    scoring: deterministic
+
+  - id: coding.frontend
+    name: Frontend Coding
+    category: coding
+    task_file: benchmarks/coding/frontend.jsonl
+    description: Frontend (HTML/CSS/JS/TSX) code generation.
+    scoring: deterministic + artifact
+
+  - id: coding.backend
+    name: Backend Coding
+    category: coding
+    task_file: benchmarks/coding/backend.jsonl
+    description: Backend (Python/API/database) code generation.
+    scoring: deterministic + artifact
+
+  - id: coding.misc
+    name: Misc Coding
+    category: coding
+    task_file: benchmarks/coding/misc.jsonl
+    description: General scripting and algorithmic coding tasks.
+    scoring: deterministic + artifact
+
+  - id: tools.json_tool_calling
+    name: JSON Tool Calling
+    category: tools
+    task_file: benchmarks/tools/json_tool_calling.jsonl
+    description: Strict JSON tool-call generation.
+    scoring: deterministic
+
+  - id: context.long_context
+    name: Long Context
+    category: context
+    task_file: benchmarks/context/long_context.jsonl
+    description: Long-context recall and retrieval tasks.
+    scoring: deterministic
