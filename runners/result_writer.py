@@ -48,6 +48,8 @@ def append_summary(
     model_config_id: str,
     task_file: str,
     run_id: str,
+    repeats: int = 1,
+    total_tasks: int | None = None,
 ) -> str:
     """Append a summary row to the results/summary.csv file.
 
@@ -60,6 +62,9 @@ def append_summary(
         model_config_id: Identifier for the model configuration.
         task_file: Full path to the source task file (stored as-is).
         run_id: Unique run identifier.
+        repeats: Number of repeat runs per task (default: 1).
+        total_tasks: Number of unique task definitions. If None, derived from
+            results and repeats.
 
     Returns:
         Absolute path (as a string) to the summary CSV file.
@@ -69,10 +74,13 @@ def append_summary(
 
     summary_path = summary_dir / "summary.csv"
 
-    total_tasks = len(results)
+    if total_tasks is None:
+        total_tasks = len(results) // repeats if repeats else len(results)
+
+    total_attempts = len(results)
     passed = sum(1 for r in results if r["passed"])
-    failed = total_tasks - passed
-    pass_rate = passed / total_tasks if total_tasks else 0.0
+    failed = total_attempts - passed
+    pass_rate = passed / total_attempts if total_attempts else 0.0
     average_score = mean(r["score"] for r in results) if results else 0.0
     average_latency_sec = mean(r["latency_sec"] for r in results) if results else 0.0
 
@@ -81,11 +89,13 @@ def append_summary(
         "model_config_id",
         "task_file",
         "total_tasks",
+        "total_attempts",
         "passed",
         "failed",
         "pass_rate",
         "average_score",
         "average_latency_sec",
+        "repeats",
     ]
 
     file_exists = summary_path.exists()
@@ -102,11 +112,13 @@ def append_summary(
                 "model_config_id": model_config_id,
                 "task_file": task_file,
                 "total_tasks": total_tasks,
+                "total_attempts": total_attempts,
                 "passed": passed,
                 "failed": failed,
                 "pass_rate": f"{pass_rate:.4f}",
                 "average_score": f"{average_score:.4f}",
                 "average_latency_sec": f"{average_latency_sec:.3f}",
+                "repeats": repeats,
             }
         )
 

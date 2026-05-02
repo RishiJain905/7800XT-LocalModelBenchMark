@@ -27,12 +27,12 @@ class TestGenerateLeaderboard:
         summary_path = tmp_path / "results" / "summary.csv"
         summary_path.parent.mkdir(parents=True, exist_ok=True)
         summary_path.write_text(
-            "run_id,model_config_id,task_file,total_tasks,passed,failed,"
-            "pass_rate,average_score,average_latency_sec\n"
+            "run_id,model_config_id,task_file,total_tasks,total_attempts,passed,failed,"
+            "pass_rate,average_score,average_latency_sec,repeats\n"
             "2026-05-01_19-56-53,qwen-9b-q8-4k,tasks/math/basic_math.jsonl,"
-            "10,9,1,0.9000,0.9000,1.420\n"
+            "10,10,9,1,0.9000,0.9000,1.420,1\n"
             "2026-05-01_19-56-53,qwen-18b-iq4-4k,tasks/math/basic_math.jsonl,"
-            "10,10,0,1.0000,0.9500,2.880\n",
+            "10,10,10,0,1.0000,0.9500,2.880,1\n",
             encoding="utf-8",
         )
         output_path = tmp_path / "results" / "reports" / "leaderboard.md"
@@ -45,9 +45,9 @@ class TestGenerateLeaderboard:
         assert lines[0] == "# Local Model Benchmark Leaderboard"
         assert (
             lines[2]
-            == "| Model Config | Task File | Total Tasks | Pass Rate | Avg Score | Avg Latency |"
+            == "| Model Config | Task File | Total Tasks | Total Attempts | Repeats | Pass Rate | Avg Score | Avg Latency |"
         )
-        assert lines[3] == "|---|---:|---:|---:|---:|---:|"
+        assert lines[3] == "|---|---:|---:|---:|---:|---:|---:|---:|"
 
         # Sorted by avg_score desc: qwen-18b-iq4-4k (0.95) before qwen-9b-q8-4k (0.90)
         assert "qwen-18b-iq4-4k" in lines[4]
@@ -55,15 +55,15 @@ class TestGenerateLeaderboard:
 
         # Verify formatting in the first data row (higher scorer)
         parts = lines[4].split("|")
-        assert "100.0%" in parts[4]
-        assert "0.95" in parts[5]
-        assert "2.88s" in parts[6]
+        assert "100.0%" in parts[6]
+        assert "0.95" in parts[7]
+        assert "2.88s" in parts[8]
 
         # Verify formatting in the second data row
         parts = lines[5].split("|")
-        assert "90.0%" in parts[4]
-        assert "0.90" in parts[5]
-        assert "1.42s" in parts[6]
+        assert "90.0%" in parts[6]
+        assert "0.90" in parts[7]
+        assert "1.42s" in parts[8]
 
     def test_sorting_by_score_then_pass_rate_then_latency(self, monkeypatch, tmp_path):
         """4 rows verify multi-key sorting: score desc, pass_rate desc, latency asc."""
@@ -81,11 +81,13 @@ class TestGenerateLeaderboard:
                 "model-A",
                 "tasks/t.jsonl",
                 "5",
+                "5",
                 "3",
                 "2",
                 "0.6000",
                 "0.9000",
                 "2.000",
+                "1",
             ),
             (
                 "run-1",
@@ -93,10 +95,12 @@ class TestGenerateLeaderboard:
                 "tasks/t.jsonl",
                 "5",
                 "5",
+                "5",
                 "0",
                 "1.0000",
                 "0.9500",
                 "3.000",
+                "1",
             ),
             (
                 "run-1",
@@ -104,10 +108,12 @@ class TestGenerateLeaderboard:
                 "tasks/t.jsonl",
                 "5",
                 "5",
+                "5",
                 "0",
                 "1.0000",
                 "0.9000",
                 "1.000",
+                "1",
             ),
             (
                 "run-1",
@@ -115,14 +121,16 @@ class TestGenerateLeaderboard:
                 "tasks/t.jsonl",
                 "5",
                 "5",
+                "5",
                 "0",
                 "1.0000",
                 "0.9500",
                 "1.500",
+                "1",
             ),
         ]
         csv_lines = [
-            "run_id,model_config_id,task_file,total_tasks,passed,failed,pass_rate,average_score,average_latency_sec",
+            "run_id,model_config_id,task_file,total_tasks,total_attempts,passed,failed,pass_rate,average_score,average_latency_sec,repeats",
         ]
         for r in rows:
             csv_lines.append(",".join(r))
@@ -151,12 +159,12 @@ class TestGenerateLeaderboard:
         summary_path = tmp_path / "results" / "summary.csv"
         summary_path.parent.mkdir(parents=True, exist_ok=True)
         summary_path.write_text(
-            "run_id,model_config_id,task_file,total_tasks,passed,failed,"
-            "pass_rate,average_score,average_latency_sec\n"
+            "run_id,model_config_id,task_file,total_tasks,total_attempts,passed,failed,"
+            "pass_rate,average_score,average_latency_sec,repeats\n"
             "2026-05-01_19-56-53,qwen-9b-q8-4k,tasks/math/basic_math.jsonl,"
-            "10,5,5,0.5000,0.5000,1.000\n"
+            "10,10,5,5,0.5000,0.5000,1.000,1\n"
             "2026-05-01_20-00-00,qwen-9b-q8-4k,tasks/math/basic_math.jsonl,"
-            "10,9,1,0.9000,0.9000,1.420\n",
+            "10,10,9,1,0.9000,0.9000,1.420,1\n",
             encoding="utf-8",
         )
         output_path = tmp_path / "results" / "reports" / "leaderboard.md"
@@ -176,8 +184,8 @@ class TestGenerateLeaderboard:
         summary_path = tmp_path / "results" / "summary.csv"
         summary_path.parent.mkdir(parents=True, exist_ok=True)
         summary_path.write_text(
-            "run_id,model_config_id,task_file,total_tasks,passed,failed,"
-            "pass_rate,average_score,average_latency_sec\n",
+            "run_id,model_config_id,task_file,total_tasks,total_attempts,passed,failed,"
+            "pass_rate,average_score,average_latency_sec,repeats\n",
             encoding="utf-8",
         )
         output_path = tmp_path / "results" / "reports" / "leaderboard.md"
@@ -209,6 +217,25 @@ class TestGenerateLeaderboard:
         summary_path = tmp_path / "results" / "summary.csv"
         summary_path.parent.mkdir(parents=True, exist_ok=True)
         summary_path.write_text(
+            "run_id,model_config_id,task_file,total_tasks,total_attempts,passed,failed,"
+            "pass_rate,average_score,average_latency_sec,repeats\n"
+            "2026-05-01_19-56-53,qwen-9b-q8-4k,tasks/math/basic_math.jsonl,"
+            "10,10,9,1,0.9000,0.9000,1.420,1\n",
+            encoding="utf-8",
+        )
+        output_path = tmp_path / "results" / "reports" / "leaderboard.md"
+
+        result = generate_leaderboard(str(summary_path), str(output_path))
+
+        assert os.path.isabs(result)
+
+    def test_old_format_csv_still_works(self, monkeypatch, tmp_path):
+        """CSV missing total_attempts and repeats columns defaults gracefully."""
+        monkeypatch.chdir(tmp_path)
+        summary_path = tmp_path / "results" / "summary.csv"
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        # Old format: no total_attempts or repeats columns
+        summary_path.write_text(
             "run_id,model_config_id,task_file,total_tasks,passed,failed,"
             "pass_rate,average_score,average_latency_sec\n"
             "2026-05-01_19-56-53,qwen-9b-q8-4k,tasks/math/basic_math.jsonl,"
@@ -217,6 +244,18 @@ class TestGenerateLeaderboard:
         )
         output_path = tmp_path / "results" / "reports" / "leaderboard.md"
 
-        result = generate_leaderboard(str(summary_path), str(output_path))
+        generate_leaderboard(str(summary_path), str(output_path))
 
-        assert os.path.isabs(result)
+        assert output_path.exists()
+        lines = output_path.read_text(encoding="utf-8").strip().split("\n")
+        assert lines[2] == (
+            "| Model Config | Task File | Total Tasks | Total Attempts | Repeats | Pass Rate | Avg Score | Avg Latency |"
+        )
+        data_rows = [ln for ln in lines if ln.startswith("| qwen-")]
+        assert len(data_rows) == 1
+        # total_attempts defaults to total_tasks (10), repeats defaults to 1
+        assert "10" in data_rows[0]
+        assert "1" in data_rows[0]
+        assert "90.0%" in data_rows[0]
+        assert "0.90" in data_rows[0]
+        assert "1.42s" in data_rows[0]

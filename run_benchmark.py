@@ -121,6 +121,12 @@ def main() -> None:
         action="store_true",
         help="Load config and tasks, print what would run, but do NOT call the model",
     )
+    parser.add_argument(
+        "--repeats",
+        type=int,
+        default=1,
+        help="Number of times to repeat each task (default: 1)",
+    )
     args = parser.parse_args()
 
     # --- Load configuration ------------------------------------------------
@@ -145,6 +151,10 @@ def main() -> None:
     if args.dry_run:
         print(f"Config: {config['id']}")
         print(f"Tasks: {len(tasks)}")
+        if args.repeats > 1:
+            print(
+                f"Repeats: {args.repeats} (total attempts: {len(tasks) * args.repeats})"
+            )
         for task in tasks:
             scorer_name = _resolve_scorer(task)
             description = task["description"]
@@ -153,51 +163,67 @@ def main() -> None:
 
     # --- Normal execution: run every task through the model ----------------
     run_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    results: list[dict[str, Any]] = []
+    flat_results: list[dict[str, Any]] = []
 
-    for idx, task in enumerate(tasks, start=1):
-        prompt: str = task["description"]
+    for task in tasks:
         scorer_name = _resolve_scorer(task)
+        for repeat_idx in range(args.repeats):
+            prompt: str = task["description"]
 
-        try:
-            model_result = run_prompt(config, prompt)
-            scorer = get_scorer(scorer_name)
-            score_result = scorer(task, model_result["response"])
-            result = _build_result(
-                task, config, model_result, score_result, args.task_file, run_id
+            try:
+                model_result = run_prompt(config, prompt)
+                scorer = get_scorer(scorer_name)
+                score_result = scorer(task, model_result["response"])
+                result = _build_result(
+                    task, config, model_result, score_result, args.task_file, run_id
+                )
+            except Exception as exc:
+                result = _build_error_result(
+                    task, config, str(exc), args.task_file, run_id
+                )
+
+            result["repeat_index"] = repeat_idx
+            result["repeat_count"] = args.repeats
+            flat_results.append(result)
+
+            print(
+                f"[{len(flat_results)}/{len(tasks) * args.repeats}] {task['id']} "
+                f"(repeat {repeat_idx + 1}/{args.repeats})  "
+                f"score={result['score']}  "
+                f"latency={result['latency_sec']:.2f}s"
             )
-        except Exception as exc:
-            result = _build_error_result(task, config, str(exc), args.task_file, run_id)
-
-        results.append(result)
-
-        print(
-            f"[{idx}/{len(tasks)}] {task['id']}  "
-            f"score={result['score']}  "
-            f"latency={result['latency_sec']:.2f}s"
-        )
 
     # --- Summary -----------------------------------------------------------
-    total = len(results)
-    passed = sum(1 for r in results if r["passed"])
-    avg_score = sum(r["score"] for r in results) / total if total else 0.0
-    avg_latency = sum(r["latency_sec"] for r in results) / total if total else 0.0
+    total = len(flat_results)
+    actual_tasks = len(tasks)
+    passed = sum(1 for r in flat_results if r["passed"])
+    avg_score = sum(r["score"] for r in flat_results) / total if total else 0.0
+    avg_latency = sum(r["latency_sec"] for r in flat_results) / total if total else 0.0
 
     print()
-    print(f"Total tasks: {total}")
+    print(
+        f"Total tasks: {actual_tasks} (repeats={args.repeats}, total_attempts={total})"
+    )
     print(f"Passed: {passed}")
     print(f"Average score: {avg_score:.2f}")
     print(f"Average latency: {avg_latency:.2f}s")
 
     # --- Persist results to disk -------------------------------------------
     try:
-        raw_path = write_raw_results(results, config["id"], args.task_file, run_id)
+        raw_path = write_raw_results(flat_results, config["id"], args.task_file, run_id)
         print(f"Saved raw results to {raw_path}")
     except OSError as exc:
         print(f"Error writing raw results: {exc}", file=sys.stderr)
 
     try:
-        summary_path = append_summary(results, config["id"], args.task_file, run_id)
+        summary_path = append_summary(
+            flat_results,
+            config["id"],
+            args.task_file,
+            run_id,
+            repeats=args.repeats,
+            total_tasks=actual_tasks,
+        )
         print(f"Update summary at {summary_path}")
     except OSError as exc:
         print(f"Error writing summary: {exc}", file=sys.stderr)

@@ -77,6 +77,8 @@ def generate_leaderboard(
                 "model_config_id": row["model_config_id"],
                 "task_file": row["task_file"],
                 "total_tasks": int(row["total_tasks"]),
+                "total_attempts": int(row.get("total_attempts", row["total_tasks"])),
+                "repeats": int(row.get("repeats", "1")),
                 "pass_rate": float(row["pass_rate"]),
                 "average_score": float(row["average_score"]),
                 "average_latency_sec": float(row["average_latency_sec"]),
@@ -97,16 +99,18 @@ def generate_leaderboard(
         "# Local Model Benchmark Leaderboard",
         "",
         (
-            "| Model Config | Task File | Total Tasks | Pass Rate "
-            "| Avg Score | Avg Latency |"
+            "| Model Config | Task File | Total Tasks | Total Attempts | Repeats "
+            "| Pass Rate | Avg Score | Avg Latency |"
         ),
-        "|---|---:|---:|---:|---:|---:|",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
 
     for row in parsed:
         lines.append(
             f"| {row['model_config_id']} | {row['task_file']} | "
-            f"{row['total_tasks']} | {row['pass_rate'] * 100:.1f}% | "
+            f"{row['total_tasks']} | {row['total_attempts']} | "
+            f"{row['repeats']} | "
+            f"{row['pass_rate'] * 100:.1f}% | "
             f"{row['average_score']:.2f} | {row['average_latency_sec']:.2f}s |"
         )
 

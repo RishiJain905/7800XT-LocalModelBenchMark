@@ -387,8 +387,8 @@ class TestAppendSummary:
         assert len(content) == 2  # header + 1 data row
         header = content[0]
         assert header == (
-            "run_id,model_config_id,task_file,total_tasks,passed,failed,"
-            "pass_rate,average_score,average_latency_sec"
+            "run_id,model_config_id,task_file,total_tasks,total_attempts,passed,failed,"
+            "pass_rate,average_score,average_latency_sec,repeats"
         )
 
     def test_appends_row(self, monkeypatch, tmp_path):
@@ -406,74 +406,179 @@ class TestAppendSummary:
         assert "run-2" in lines[2]
 
     def test_stats_computation_all_passed(self, monkeypatch, tmp_path):
-        """All-passed results produce pass_rate=1.0 and correct averages."""
+        """All-passed results produce pass_rate=1.0, total_attempts=3, repeats=1."""
         monkeypatch.chdir(tmp_path)
         results = [
-            {"latency_sec": 0.5, "score": 0.8, "passed": True},
-            {"latency_sec": 1.5, "score": 1.0, "passed": True},
-            {"latency_sec": 1.0, "score": 0.9, "passed": True},
+            {
+                "latency_sec": 0.5,
+                "score": 0.8,
+                "passed": True,
+                "repeat_index": 0,
+                "repeat_count": 1,
+            },
+            {
+                "latency_sec": 1.5,
+                "score": 1.0,
+                "passed": True,
+                "repeat_index": 0,
+                "repeat_count": 1,
+            },
+            {
+                "latency_sec": 1.0,
+                "score": 0.9,
+                "passed": True,
+                "repeat_index": 0,
+                "repeat_count": 1,
+            },
         ]
-        append_summary(results, "cfg", "tasks.jsonl", "run-1")
+        append_summary(results, "cfg", "tasks.jsonl", "run-1", repeats=1, total_tasks=3)
         summary_path = tmp_path / "results" / "summary.csv"
         with open(summary_path, encoding="utf-8") as f:
             lines = f.read().strip().split("\n")
         data = lines[1]
         parts = data.split(",")
-        assert parts[3] == "3"
-        assert parts[4] == "3"
-        assert parts[5] == "0"
-        assert parts[6] == "1.0000"
-        assert float(parts[7]) == pytest.approx(0.9, abs=0.0001)
-        assert float(parts[8]) == pytest.approx(1.0, abs=0.001)
+        assert parts[3] == "3"  # total_tasks
+        assert parts[4] == "3"  # total_attempts
+        assert parts[5] == "3"  # passed
+        assert parts[6] == "0"  # failed
+        assert parts[7] == "1.0000"  # pass_rate
+        assert float(parts[8]) == pytest.approx(0.9, abs=0.0001)  # average_score
+        assert float(parts[9]) == pytest.approx(1.0, abs=0.001)  # average_latency_sec
+        assert parts[10] == "1"  # repeats
 
     def test_stats_computation_some_failed(self, monkeypatch, tmp_path, sample_results):
-        """Mixed-pass results produce correct pass_rate and averages."""
+        """Mixed-pass results produce correct pass_rate and averages with repeats."""
         monkeypatch.chdir(tmp_path)
-        append_summary(sample_results, "cfg", "tasks.jsonl", "run-1")
+        for r in sample_results:
+            r["repeat_index"] = 0
+            r["repeat_count"] = 1
+        append_summary(
+            sample_results, "cfg", "tasks.jsonl", "run-1", repeats=1, total_tasks=3
+        )
         summary_path = tmp_path / "results" / "summary.csv"
         with open(summary_path, encoding="utf-8") as f:
             lines = f.read().strip().split("\n")
         data = lines[1]
         parts = data.split(",")
-        assert parts[3] == "3"
-        assert parts[4] == "2"
-        assert parts[5] == "1"
-        assert parts[6] == "0.6667"
-        assert float(parts[7]) == pytest.approx(0.6667, abs=0.0001)
-        assert float(parts[8]) == pytest.approx(1.000, abs=0.001)
+        assert parts[3] == "3"  # total_tasks
+        assert parts[4] == "3"  # total_attempts
+        assert parts[5] == "2"  # passed
+        assert parts[6] == "1"  # failed
+        assert parts[7] == "0.6667"  # pass_rate
+        assert float(parts[8]) == pytest.approx(0.6667, abs=0.0001)  # average_score
+        assert float(parts[9]) == pytest.approx(1.000, abs=0.001)  # average_latency_sec
+        assert parts[10] == "1"  # repeats
 
     def test_empty_results_list(self, monkeypatch, tmp_path):
-        """Empty results produce zeroes across all summary columns."""
+        """Empty results produce zeroes across all summary columns including new fields."""
         monkeypatch.chdir(tmp_path)
-        append_summary([], "cfg", "tasks.jsonl", "run-1")
+        append_summary([], "cfg", "tasks.jsonl", "run-1", repeats=1, total_tasks=0)
         summary_path = tmp_path / "results" / "summary.csv"
         with open(summary_path, encoding="utf-8") as f:
             lines = f.read().strip().split("\n")
         data = lines[1]
         parts = data.split(",")
-        assert parts[3] == "0"
-        assert parts[4] == "0"
-        assert parts[5] == "0"
-        assert parts[6] == "0.0000"
-        assert parts[7] == "0.0000"
-        assert parts[8] == "0.000"
+        assert parts[3] == "0"  # total_tasks
+        assert parts[4] == "0"  # total_attempts
+        assert parts[5] == "0"  # passed
+        assert parts[6] == "0"  # failed
+        assert parts[7] == "0.0000"  # pass_rate
+        assert parts[8] == "0.0000"  # average_score
+        assert parts[9] == "0.000"  # average_latency_sec
+        assert parts[10] == "1"  # repeats
 
     def test_float_formatting(self, monkeypatch, tmp_path):
-        """pass_rate uses :.4f and average_latency_sec uses :.3f."""
+        """pass_rate uses :.4f and average_latency_sec uses :.3f with new columns."""
         monkeypatch.chdir(tmp_path)
         results = [
-            {"latency_sec": 1.23456, "score": 0.666666, "passed": True},
-            {"latency_sec": 1.23456, "score": 0.666666, "passed": False},
+            {
+                "latency_sec": 1.23456,
+                "score": 0.666666,
+                "passed": True,
+                "repeat_index": 0,
+                "repeat_count": 1,
+            },
+            {
+                "latency_sec": 1.23456,
+                "score": 0.666666,
+                "passed": False,
+                "repeat_index": 0,
+                "repeat_count": 1,
+            },
         ]
-        append_summary(results, "cfg", "tasks.jsonl", "run-1")
+        append_summary(results, "cfg", "tasks.jsonl", "run-1", repeats=1, total_tasks=2)
         summary_path = tmp_path / "results" / "summary.csv"
         with open(summary_path, encoding="utf-8") as f:
             lines = f.read().strip().split("\n")
         data = lines[1]
         parts = data.split(",")
-        assert parts[6] == "0.5000"  # 1 passed / 2 total -> .4f
-        assert parts[7] == "0.6667"  # avg score -> .4f
-        assert parts[8] == "1.235"  # avg latency -> .3f
+        assert parts[4] == "2"  # total_attempts
+        assert parts[5] == "1"  # passed
+        assert parts[6] == "1"  # failed
+        assert parts[7] == "0.5000"  # pass_rate
+        assert parts[8] == "0.6667"  # avg score
+        assert parts[9] == "1.235"  # avg latency
+        assert parts[10] == "1"  # repeats
+
+    def test_append_summary_with_repeats(self, monkeypatch, tmp_path):
+        """Direct test of append_summary with repeats=3 populates new columns correctly."""
+        monkeypatch.chdir(tmp_path)
+        results = [
+            {
+                "latency_sec": 0.5,
+                "score": 1.0,
+                "passed": True,
+                "repeat_index": 0,
+                "repeat_count": 3,
+            },
+            {
+                "latency_sec": 0.5,
+                "score": 1.0,
+                "passed": True,
+                "repeat_index": 1,
+                "repeat_count": 3,
+            },
+            {
+                "latency_sec": 0.5,
+                "score": 1.0,
+                "passed": True,
+                "repeat_index": 2,
+                "repeat_count": 3,
+            },
+            {
+                "latency_sec": 1.0,
+                "score": 0.0,
+                "passed": False,
+                "repeat_index": 0,
+                "repeat_count": 3,
+            },
+            {
+                "latency_sec": 1.0,
+                "score": 0.0,
+                "passed": False,
+                "repeat_index": 1,
+                "repeat_count": 3,
+            },
+            {
+                "latency_sec": 1.0,
+                "score": 0.0,
+                "passed": False,
+                "repeat_index": 2,
+                "repeat_count": 3,
+            },
+        ]
+        append_summary(results, "cfg", "tasks.jsonl", "run-1", repeats=3, total_tasks=2)
+        summary_path = tmp_path / "results" / "summary.csv"
+        with open(summary_path, encoding="utf-8") as f:
+            lines = f.read().strip().split("\n")
+        data = lines[1]
+        parts = data.split(",")
+        assert parts[3] == "2"  # total_tasks
+        assert parts[4] == "6"  # total_attempts
+        assert parts[5] == "3"  # passed
+        assert parts[6] == "3"  # failed
+        assert parts[7] == "0.5000"  # pass_rate
+        assert parts[10] == "3"  # repeats
 
 
 # ---------------------------------------------------------------------------
@@ -633,9 +738,9 @@ class TestMainFullRun:
 
         captured = capsys.readouterr()
         out = captured.out
-        assert "[1/2] t-01" in out
-        assert "[2/2] t-02" in out
-        assert "Total tasks: 2" in out
+        assert "[1/2] t-01 (repeat 1/1)" in out
+        assert "[2/2] t-02 (repeat 1/1)" in out
+        assert "Total tasks: 2 (repeats=1, total_attempts=2)" in out
         assert "Passed: 2" in out
         assert "Average score: 1.00" in out
         assert "Average latency: 0.50s" in out
@@ -681,9 +786,9 @@ class TestMainFullRun:
 
         captured = capsys.readouterr()
         out = captured.out
-        assert "[1/2] t-ok" in out
-        assert "[2/2] t-bad" in out
-        assert "Total tasks: 2" in out
+        assert "[1/2] t-ok (repeat 1/1)" in out
+        assert "[2/2] t-bad (repeat 1/1)" in out
+        assert "Total tasks: 2 (repeats=1, total_attempts=2)" in out
         assert "Passed: 1" in out
         assert "Average score: 0.50" in out
         assert "Average latency: 0.12s" in out
@@ -945,3 +1050,172 @@ class TestMainFullRun:
         captured = capsys.readouterr()
         err = captured.err
         assert "Error writing leaderboard" in err
+
+
+class TestMainRepeats:
+    """Execution with mocked model and scorer using --repeats flag."""
+
+    def test_repeats_defaults_to_1(self, monkeypatch, tmp_path, capsys):
+        """Same as full run but explicitly verify --repeats 1 produces 1 result per task."""
+        config_path = tmp_path / "config.yaml"
+        task_path = tmp_path / "tasks.jsonl"
+        _write_yaml(config_path, _make_config(config_id="repeat-cfg"))
+        _write_jsonl(
+            task_path,
+            [
+                _make_task("t-01", "Q1", "text", "a1"),
+                _make_task("t-02", "Q2", "text", "a2"),
+            ],
+        )
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "run_benchmark.py",
+                "--config",
+                str(config_path),
+                "--task-file",
+                str(task_path),
+                "--repeats",
+                "1",
+            ],
+        )
+
+        def fake_run_prompt(config, prompt):
+            return _make_model_result(response="answer", latency_sec=0.5)
+
+        def fake_scorer(task, response):
+            return _make_score_result(score=1.0, passed=True, reason="matched")
+
+        with patch("run_benchmark.run_prompt", side_effect=fake_run_prompt):
+            with patch("run_benchmark.get_scorer", return_value=fake_scorer):
+                with patch("run_benchmark.write_raw_results") as mock_write:
+                    main()
+                    # 2 tasks x 1 repeat = 2 results
+                    assert mock_write.call_count == 1
+                    written_results = mock_write.call_args[0][0]
+                    assert len(written_results) == 2
+                    for r in written_results:
+                        assert r["repeat_index"] == 0
+                        assert r["repeat_count"] == 1
+
+        captured = capsys.readouterr()
+        out = captured.out
+        assert "[1/2] t-01 (repeat 1/1)" in out
+        assert "[2/2] t-02 (repeat 1/1)" in out
+        assert "Total tasks: 2 (repeats=1, total_attempts=2)" in out
+
+    def test_repeats_3_produces_correct_results(self, monkeypatch, tmp_path, capsys):
+        """--repeats 3 produces 6 results with correct repeat_index values and progress."""
+        config_path = tmp_path / "config.yaml"
+        task_path = tmp_path / "tasks.jsonl"
+        _write_yaml(config_path, _make_config(config_id="repeat3-cfg"))
+        _write_jsonl(
+            task_path,
+            [
+                _make_task("t-01", "Q1", "text", "a1"),
+                _make_task("t-02", "Q2", "text", "a2"),
+            ],
+        )
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "run_benchmark.py",
+                "--config",
+                str(config_path),
+                "--task-file",
+                str(task_path),
+                "--repeats",
+                "3",
+            ],
+        )
+
+        def fake_run_prompt(config, prompt):
+            return _make_model_result(response="answer", latency_sec=0.5)
+
+        def fake_scorer(task, response):
+            return _make_score_result(score=1.0, passed=True, reason="matched")
+
+        with patch("run_benchmark.run_prompt", side_effect=fake_run_prompt):
+            with patch("run_benchmark.get_scorer", return_value=fake_scorer):
+                with patch("run_benchmark.write_raw_results") as mock_write:
+                    main()
+                    # 2 tasks x 3 repeats = 6 results
+                    written_results = mock_write.call_args[0][0]
+                    assert len(written_results) == 6
+                    repeat_indices = [r["repeat_index"] for r in written_results]
+                    repeat_counts = [r["repeat_count"] for r in written_results]
+                    assert repeat_indices == [0, 1, 2, 0, 1, 2]
+                    assert all(rc == 3 for rc in repeat_counts)
+
+        captured = capsys.readouterr()
+        out = captured.out
+        assert "[1/6] t-01 (repeat 1/3)" in out
+        assert "[2/6] t-01 (repeat 2/3)" in out
+        assert "[3/6] t-01 (repeat 3/3)" in out
+        assert "[4/6] t-02 (repeat 1/3)" in out
+        assert "[5/6] t-02 (repeat 2/3)" in out
+        assert "[6/6] t-02 (repeat 3/3)" in out
+        assert "Total tasks: 2 (repeats=3, total_attempts=6)" in out
+
+    def test_repeats_with_errors(self, monkeypatch, tmp_path, capsys):
+        """Repeats with one error on 2nd task’s 2nd repeat still produce 6 results total."""
+        config_path = tmp_path / "config.yaml"
+        task_path = tmp_path / "tasks.jsonl"
+        _write_yaml(config_path, _make_config(config_id="err-repeat-cfg"))
+        _write_jsonl(
+            task_path,
+            [
+                _make_task("t-ok", "OK task", "text", "ok"),
+                _make_task("t-bad", "Bad task", "text", "bad"),
+            ],
+        )
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "run_benchmark.py",
+                "--config",
+                str(config_path),
+                "--task-file",
+                str(task_path),
+                "--repeats",
+                "3",
+            ],
+        )
+
+        call_count = 0
+
+        def fake_run_prompt(config, prompt):
+            nonlocal call_count
+            call_count += 1
+            # Tasks repeat in order: t-ok x3, t-bad x3
+            # call_count 4 = 2nd task, 2nd repeat
+            if call_count == 5:
+                raise RuntimeError("model exploded")
+            return _make_model_result(response="answer", latency_sec=0.25)
+
+        def fake_scorer(task, response):
+            return _make_score_result(score=1.0, passed=True, reason="matched")
+
+        with patch("run_benchmark.run_prompt", side_effect=fake_run_prompt):
+            with patch("run_benchmark.get_scorer", return_value=fake_scorer):
+                with patch("run_benchmark.write_raw_results") as mock_write:
+                    main()
+                    written_results = mock_write.call_args[0][0]
+                    assert len(written_results) == 6
+                    passed_count = sum(1 for r in written_results if r["passed"])
+                    failed_count = sum(1 for r in written_results if not r["passed"])
+                    assert passed_count == 5
+                    assert failed_count == 1
+                    # Find the failed result
+                    failed_result = next(r for r in written_results if not r["passed"])
+                    assert failed_result["repeat_index"] == 1
+                    assert failed_result["repeat_count"] == 3
+                    assert "model exploded" == failed_result["reason"]
+
+        captured = capsys.readouterr()
+        out = captured.out
+        assert "Total tasks: 2 (repeats=3, total_attempts=6)" in out
+        assert "Passed: 5" in out
