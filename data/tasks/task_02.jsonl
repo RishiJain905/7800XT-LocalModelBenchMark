@@ -1,4 +1,4 @@
-{"id":"math_square","description":"What is 12 squared? Reply with only the number.","command":"noop","expected_output":"144","metadata":{"category":"math"}}
-{"id":"text_primary_color","description":"Name one primary color. Reply with only: red","command":"noop","expected_output":"red","metadata":{"category":"text"}}
-{"id":"keyword_python_list","description":"Briefly describe a Python list.","command":"noop","expected_output":"ordered mutable collection","metadata":{"category":"keyword","keywords":["ordered","mutable","collection"]}}
-{"id":"json_calculator_tool","description":"Return only JSON for adding 3 and 5. Use this shape: {\"tool\":\"calculator\",\"arguments\":{\"a\":3,\"b\":5}}","command":"noop","expected_output":"calculator","metadata":{"category":"json","expected_tool":"calculator","required_argument_keys":["a","b"]}}
+{"id":"math_square","description":"What is 12 squared? Reply with only the number.","expected_output":"144","metadata":{"category":"math"}}
+{"id":"text_primary_color","description":"Name one primary color. Reply with only: red","expected_output":"red","metadata":{"category":"text"}}
+{"id":"keyword_python_list","description":"Briefly describe a Python list.","expected_output":"ordered mutable collection","metadata":{"category":"keyword","keywords":["ordered","mutable","collection"]}}
+{"id":"json_calculator_tool","description":"Return only JSON for adding 3 and 5. Use this shape: {\"tool\":\"calculator\",\"arguments\":{\"a\":3,\"b\":5}}","expected_output":"calculator","metadata":{"category":"json","expected_tool":"calculator","required_argument_keys":["a","b"]}}

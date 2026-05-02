@@ -7,7 +7,6 @@ REQUIRED_FIELDS = frozenset(
     {
         "id",
         "description",
-        "command",
         "expected_output",
     }
 )
@@ -55,9 +54,6 @@ def _validate_field_types(task: Dict[str, Any]) -> None:
     if not isinstance(task.get("description"), str):
         raise ValidationError("'description' must be a string", field="description")
 
-    if not isinstance(task.get("command"), str):
-        raise ValidationError("'command' must be a string", field="command")
-
     if not isinstance(task.get("expected_output"), str):
         raise ValidationError(
             "'expected_output' must be a string", field="expected_output"
@@ -74,10 +70,6 @@ def _validate_field_values(task: Dict[str, Any]) -> None:
     # Validate description is not empty
     if not task.get("description"):
         raise ValidationError("'description' cannot be empty", field="description")
-
-    # Validate command is not empty
-    if not task.get("command"):
-        raise ValidationError("'command' cannot be empty", field="command")
 
     # Validate expected_output is not empty
     if not task.get("expected_output"):

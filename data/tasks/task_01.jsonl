@@ -1,4 +1,4 @@
-{"id":"math_add","description":"What is 2 + 2? Reply with only the number.","command":"noop","expected_output":"4","metadata":{"category":"math"}}
-{"id":"text_capital_france","description":"What is the capital of France? Reply with only the city name.","command":"noop","expected_output":"Paris","metadata":{"category":"text"}}
-{"id":"keyword_transformer","description":"In one sentence, what is a transformer model in machine learning?","command":"noop","expected_output":"attention","metadata":{"category":"keyword","keywords":["attention","self-attention","encoder","decoder"]}}
-{"id":"json_weather_tool","description":"Return only JSON for a tool call to get the weather in Tokyo. Use this shape: {\"tool\":\"get_weather\",\"arguments\":{\"location\":\"Tokyo\"}}","command":"noop","expected_output":"get_weather","metadata":{"category":"json","expected_tool":"get_weather","required_argument_keys":["location"]}}
+{"id":"math_add","description":"What is 2 + 2? Reply with only the number.","expected_output":"4","metadata":{"category":"math"}}
+{"id":"text_capital_france","description":"What is the capital of France? Reply with only the city name.","expected_output":"Paris","metadata":{"category":"text"}}
+{"id":"keyword_transformer","description":"In one sentence, what is a transformer model in machine learning?","expected_output":"attention","metadata":{"category":"keyword","keywords":["attention","self-attention","encoder","decoder"]}}
+{"id":"json_weather_tool","description":"Return only JSON for a tool call to get the weather in Tokyo. Use this shape: {\"tool\":\"get_weather\",\"arguments\":{\"location\":\"Tokyo\"}}","expected_output":"get_weather","metadata":{"category":"json","expected_tool":"get_weather","required_argument_keys":["location"]}}

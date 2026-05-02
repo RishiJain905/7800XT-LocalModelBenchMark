@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from scorers.exact_match import score as exact_match_score
 from scorers.json_valid import score as json_valid_score
 from scorers.keyword_match import score as keyword_match_score
 from scorers.numeric_close import score as numeric_close_score
 
-_REGISTRY: dict[str, callable] = {
+_REGISTRY: dict[str, Callable[[dict, str], dict]] = {
     "exact_match": exact_match_score,
     "numeric_close": numeric_close_score,
     "keyword_match": keyword_match_score,
@@ -17,7 +19,7 @@ _REGISTRY: dict[str, callable] = {
 _SUPPORTED = sorted(_REGISTRY.keys())
 
 
-def get_scorer(name: str) -> callable:
+def get_scorer(name: str) -> Callable[[dict, str], dict]:
     """Return the scorer function registered under *name*.
 
     Args:

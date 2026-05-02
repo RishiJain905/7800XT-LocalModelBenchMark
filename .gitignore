@@ -1,2 +1,5 @@
 .worktrees/
 __pycache__/
+
+# Generated benchmark output artifacts
+results/

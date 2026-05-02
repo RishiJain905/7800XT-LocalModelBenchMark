@@ -33,7 +33,7 @@ def score(task: dict, response: str) -> dict:
         return {
             "score": 0.0,
             "passed": False,
-            "reason": "Task is missing 'expected' key",
+            "reason": "Task is missing 'expected' or 'expected_output' key",
         }
 
     expected_raw = task[expected_key]
@@ -41,7 +41,7 @@ def score(task: dict, response: str) -> dict:
         return {
             "score": 0.0,
             "passed": False,
-            "reason": "Task 'expected' value is None",
+            "reason": f"Task '{expected_key}' value is None",
         }
 
     if not isinstance(expected_raw, str):

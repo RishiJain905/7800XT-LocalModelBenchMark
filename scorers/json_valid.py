@@ -99,13 +99,13 @@ def score(task: dict, response: str) -> dict:
                     f"'arguments' is not an object: {type(arguments).__name__}"
                 )
             else:
-                missing_keys = [k for k in required_keys if k not in arguments]
+                missing_keys = [str(k) for k in required_keys if k not in arguments]
                 if missing_keys:
                     reasons.append(f"Missing argument keys: {', '.join(missing_keys)}")
                 else:
                     checks_passed += 1
                     reasons.append(
-                        f"All required argument keys present: {', '.join(required_keys)}"
+                        f"All required argument keys present: {', '.join(str(k) for k in required_keys)}"
                     )
 
     # --- Compute final score -----------------------------------------------

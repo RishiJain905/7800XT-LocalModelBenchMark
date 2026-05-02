@@ -100,6 +100,41 @@ def append_summary(
 
     file_exists = summary_path.exists()
 
+    if file_exists and summary_path.stat().st_size > 0:
+        with open(summary_path, "r", newline="", encoding="utf-8") as fh:
+            reader = csv.DictReader(fh)
+            existing_fieldnames = reader.fieldnames
+
+        if existing_fieldnames and existing_fieldnames != fieldnames:
+            old_rows: list[dict[str, str]] = []
+            with open(summary_path, "r", newline="", encoding="utf-8") as fh:
+                old_rows = list(csv.DictReader(fh))
+
+            with open(summary_path, "w", newline="", encoding="utf-8") as fh:
+                writer = csv.DictWriter(
+                    fh, fieldnames=fieldnames, extrasaction="ignore"
+                )
+                writer.writeheader()
+                for row in old_rows:
+                    writer.writerow(row)
+                writer.writerow(
+                    {
+                        "run_id": run_id,
+                        "model_config_id": model_config_id,
+                        "task_file": task_file,
+                        "total_tasks": total_tasks,
+                        "total_attempts": total_attempts,
+                        "passed": passed,
+                        "failed": failed,
+                        "pass_rate": f"{pass_rate:.4f}",
+                        "average_score": f"{average_score:.4f}",
+                        "average_latency_sec": f"{average_latency_sec:.3f}",
+                        "repeats": repeats,
+                    }
+                )
+
+            return str(summary_path.resolve())
+
     with open(summary_path, "a", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=fieldnames)
 

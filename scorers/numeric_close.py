@@ -41,7 +41,7 @@ def score(task: dict, response: str) -> dict:
         return {
             "score": 0.0,
             "passed": False,
-            "reason": "Task is missing 'expected' key",
+            "reason": "Task is missing 'expected' or 'expected_output' key",
         }
 
     expected_raw = task[expected_key]
@@ -51,7 +51,7 @@ def score(task: dict, response: str) -> dict:
         return {
             "score": 0.0,
             "passed": False,
-            "reason": f"Task 'expected' is not numeric: {expected_raw!r}",
+            "reason": f"Task '{expected_key}' is not numeric: {expected_raw!r}",
         }
 
     # --- Extract first number from response --------------------------------
@@ -73,7 +73,14 @@ def score(task: dict, response: str) -> dict:
         }
 
     # --- Compare with tolerance --------------------------------------------
-    tolerance = task.get("tolerance", 0.01)
+    try:
+        tolerance = float(task.get("tolerance", 0.01))
+    except (TypeError, ValueError):
+        return {
+            "score": 0.0,
+            "passed": False,
+            "reason": f"Task 'tolerance' is not numeric: {task.get('tolerance')!r}",
+        }
 
     if abs(actual - expected) <= tolerance:
         return {

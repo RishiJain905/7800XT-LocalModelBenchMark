@@ -64,7 +64,7 @@ class TestExactMatchScore:
         result = exact_match_score(task, "hello")
         assert result["score"] == 0.0
         assert result["passed"] is False
-        assert "missing 'expected' key" in result["reason"]
+        assert "missing 'expected' or 'expected_output' key" in result["reason"]
 
     def test_uses_expected_output_when_expected_is_absent(self):
         """Benchmark task files use expected_output as their reference answer."""
@@ -209,7 +209,7 @@ class TestNumericCloseScore:
         result = numeric_close_score(task, "42")
         assert result["score"] == 0.0
         assert result["passed"] is False
-        assert "missing 'expected' key" in result["reason"]
+        assert "missing 'expected' or 'expected_output' key" in result["reason"]
 
     def test_uses_expected_output_when_expected_is_absent(self):
         """Numeric tasks should work with the loader's expected_output field."""
@@ -358,7 +358,9 @@ class TestKeywordMatchScore:
         result = keyword_match_score(task, "hello")
         assert result["score"] == 0.0
         assert result["passed"] is False
-        assert "missing 'expected_keywords' key" in result["reason"]
+        assert (
+            "missing 'expected_keywords' or 'metadata.keywords' key" in result["reason"]
+        )
 
     def test_uses_metadata_keywords_when_expected_keywords_absent(self):
         """README task format stores keyword expectations under metadata.keywords."""

@@ -19,8 +19,8 @@ def load_tasks(path: str) -> List[Dict[str, Any]]:
 
     Raises:
         FileNotFoundError: If the file doesn't exist
-        ValueError: If the file contains invalid JSON or malformed data
-        ValidationError: If tasks fail validation
+        ValueError: If the file contains invalid JSON, malformed data,
+            or tasks that fail validation
     """
     path_obj = Path(path)
 

@@ -38,14 +38,14 @@ def score(task: dict, response: str) -> dict:
         return {
             "score": 0.0,
             "passed": False,
-            "reason": "Task is missing 'expected_keywords' key",
+            "reason": "Task is missing 'expected_keywords' or 'metadata.keywords' key",
         }
 
     if not isinstance(keywords, list):
         return {
             "score": 0.0,
             "passed": False,
-            "reason": f"Task 'expected_keywords' is not a list: {type(keywords).__name__}",
+            "reason": f"Task keywords ('expected_keywords' or 'metadata.keywords') is not a list: {type(keywords).__name__}",
         }
 
     # An empty keyword list trivially passes.

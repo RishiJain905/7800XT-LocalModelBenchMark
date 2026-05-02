@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import sys
 from datetime import datetime
+import uuid
 from typing import Any
 
 from runners.config_loader import load_config
@@ -162,7 +163,7 @@ def main() -> None:
         return
 
     # --- Normal execution: run every task through the model ----------------
-    run_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    run_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + f"_{uuid.uuid4().hex[:8]}"
     flat_results: list[dict[str, Any]] = []
 
     for task in tasks:

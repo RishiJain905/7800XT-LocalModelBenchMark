@@ -40,7 +40,6 @@ def _valid_task(task_id: str = "task-01") -> Dict[str, Any]:
     return {
         "id": task_id,
         "description": "A valid test task",
-        "command": "echo hello",
         "expected_output": "hello",
     }
 
@@ -83,7 +82,6 @@ class TestLoadTasksHappyPath:
         task = {
             "id": "task-extra",
             "description": "Task with extra fields",
-            "command": "echo test",
             "expected_output": "test",
             "extra_field": "preserved",
             "nested": {"key": "value"},
@@ -232,7 +230,7 @@ class TestValidationErrors:
 
     @pytest.mark.parametrize(
         "missing_key",
-        ["id", "description", "command", "expected_output"],
+        ["id", "description", "expected_output"],
     )
     def test_missing_required_field(self, tmp_path, missing_key):
         task = _valid_task()
@@ -250,7 +248,7 @@ class TestValidationErrors:
         path = _write_jsonl(tmp_path, "bad.jsonl", [task])
         with pytest.raises(
             ValueError,
-            match="Line 1: Missing required fields: .*command.*description.*expected_output",
+            match="Line 1: Missing required fields: .*description.*expected_output",
         ):
             load_tasks(path)
 
@@ -268,13 +266,6 @@ class TestValidationErrors:
         task["description"] = 123
         path = _write_jsonl(tmp_path, "bad.jsonl", [task])
         with pytest.raises(ValueError, match="Line 1: 'description' must be a string"):
-            load_tasks(path)
-
-    def test_wrong_type_for_command(self, tmp_path):
-        task = _valid_task()
-        task["command"] = {"cmd": "bad"}
-        path = _write_jsonl(tmp_path, "bad.jsonl", [task])
-        with pytest.raises(ValueError, match="Line 1: 'command' must be a string"):
             load_tasks(path)
 
     def test_wrong_type_for_expected_output(self, tmp_path):
@@ -298,13 +289,6 @@ class TestValidationErrors:
         task["description"] = ""
         path = _write_jsonl(tmp_path, "bad.jsonl", [task])
         with pytest.raises(ValueError, match="Line 1: 'description' cannot be empty"):
-            load_tasks(path)
-
-    def test_empty_command_raises(self, tmp_path):
-        task = _valid_task()
-        task["command"] = ""
-        path = _write_jsonl(tmp_path, "bad.jsonl", [task])
-        with pytest.raises(ValueError, match="Line 1: 'command' cannot be empty"):
             load_tasks(path)
 
     def test_empty_expected_output_raises(self, tmp_path):
@@ -347,25 +331,21 @@ class TestEndToEndWorkflow:
             {
                 "id": "setup",
                 "description": "Setup environment",
-                "command": "mkdir -p /tmp/test",
                 "expected_output": "ok",
             },
             {
                 "id": "run-001",
                 "description": "Run first benchmark",
-                "command": "python benchmark.py --task 1",
                 "expected_output": "PASS",
             },
             {
                 "id": "run-002",
                 "description": "Run second benchmark",
-                "command": "python benchmark.py --task 2",
                 "expected_output": "PASS",
             },
             {
                 "id": "cleanup",
                 "description": "Clean up temp files",
-                "command": "rm -rf /tmp/test",
                 "expected_output": "done",
             },
         ]
@@ -373,7 +353,7 @@ class TestEndToEndWorkflow:
         result = load_tasks(path)
         assert len(result) == 4
         assert result[0]["id"] == "setup"
-        assert result[1]["command"] == "python benchmark.py --task 1"
+        assert result[1]["expected_output"] == "PASS"
         assert result[2]["expected_output"] == "PASS"
         assert result[3]["description"] == "Clean up temp files"
 
@@ -382,7 +362,6 @@ class TestEndToEndWorkflow:
             {
                 "id": "empty-output-test",
                 "description": "Test empty output",
-                "command": ":",
                 "expected_output": "",
             },
         ]
@@ -395,7 +374,6 @@ class TestEndToEndWorkflow:
             {
                 "id": "unicode-test",
                 "description": "Unicode chars: 你好 мир 🌍",
-                "command": "echo 'hello мир'",
                 "expected_output": "hello мир",
             },
         ]
@@ -409,7 +387,6 @@ class TestEndToEndWorkflow:
             {
                 "id": str(i),
                 "description": f"Task {i}",
-                "command": f"cmd {i}",
                 "expected_output": f"out {i}",
             }
             for i in range(100)
@@ -425,7 +402,6 @@ class TestEndToEndWorkflow:
         task = {
             "id": "comment-test",
             "description": "Task with /* comment-like */ text and // slashes",
-            "command": "echo 'special chars: /* not a comment */ // not one either'",
             "expected_output": "special chars: /* not a comment */ // not one either",
         }
         path = _write_jsonl(tmp_path, "comments.jsonl", [task])

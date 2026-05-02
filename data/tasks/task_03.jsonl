@@ -1,4 +1,4 @@
-{"id":"math_percent","description":"What is 25 percent of 80? Reply with only the number.","command":"noop","expected_output":"20","metadata":{"category":"math"}}
-{"id":"text_boolean","description":"Reply with exactly: true","command":"noop","expected_output":"true","metadata":{"category":"text"}}
-{"id":"keyword_http","description":"Briefly explain what an HTTP request contains.","command":"noop","expected_output":"method headers body","metadata":{"category":"keyword","keywords":["method","headers","body"]}}
-{"id":"json_search_tool","description":"Return only JSON for searching local files for README. Use this shape: {\"tool\":\"search_files\",\"arguments\":{\"query\":\"README\"}}","command":"noop","expected_output":"search_files","metadata":{"category":"json","expected_tool":"search_files","required_argument_keys":["query"]}}
+{"id":"math_percent","description":"What is 25 percent of 80? Reply with only the number.","expected_output":"20","metadata":{"category":"math"}}
+{"id":"text_boolean","description":"Reply with exactly: true","expected_output":"true","metadata":{"category":"text"}}
+{"id":"keyword_http","description":"Briefly explain what an HTTP request contains.","expected_output":"method headers body","metadata":{"category":"keyword","keywords":["method","headers","body"]}}
+{"id":"json_search_tool","description":"Return only JSON for searching local files for README. Use this shape: {\"tool\":\"search_files\",\"arguments\":{\"query\":\"README\"}}","expected_output":"search_files","metadata":{"category":"json","expected_tool":"search_files","required_argument_keys":["query"]}}

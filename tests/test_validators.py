@@ -25,7 +25,6 @@ def _valid_task() -> dict:
     return {
         "id": "task-01",
         "description": "A valid test task",
-        "command": "echo hello",
         "expected_output": "hello",
     }
 
@@ -39,7 +38,7 @@ class TestRequiredFieldsConstant:
     """The REQUIRED_FIELDS frozenset defines the mandatory task keys."""
 
     def test_contains_expected_fields(self):
-        assert REQUIRED_FIELDS == {"id", "description", "command", "expected_output"}
+        assert REQUIRED_FIELDS == {"id", "description", "expected_output"}
 
     def test_is_frozen(self):
         with pytest.raises(AttributeError):
@@ -88,9 +87,7 @@ class TestValidateRequiredFields:
         task = _valid_task()
         _validate_required_fields(task)  # should not raise
 
-    @pytest.mark.parametrize(
-        "missing_key", ["id", "description", "command", "expected_output"]
-    )
+    @pytest.mark.parametrize("missing_key", ["id", "description", "expected_output"])
     def test_missing_single_field_raises(self, missing_key):
         task = _valid_task()
         del task[missing_key]
@@ -106,7 +103,6 @@ class TestValidateRequiredFields:
         ) as exc_info:
             _validate_required_fields(task)
         err = exc_info.value
-        assert "command" in err.message
         assert "description" in err.message
         assert "expected_output" in err.message
 
@@ -190,18 +186,6 @@ class TestValidateFieldTypes:
         with pytest.raises(ValidationError, match="'description' must be a string"):
             _validate_field_types(task)
 
-    def test_command_as_int_raises(self):
-        task = _valid_task()
-        task["command"] = 456
-        with pytest.raises(ValidationError, match="'command' must be a string"):
-            _validate_field_types(task)
-
-    def test_command_as_dict_raises(self):
-        task = _valid_task()
-        task["command"] = {"cmd": "test"}
-        with pytest.raises(ValidationError, match="'command' must be a string"):
-            _validate_field_types(task)
-
     def test_expected_output_as_int_raises(self):
         task = _valid_task()
         task["expected_output"] = 789
@@ -216,10 +200,10 @@ class TestValidateFieldTypes:
 
     def test_error_has_field_attribute(self):
         task = _valid_task()
-        task["command"] = 123
+        task["id"] = ["bad"]
         with pytest.raises(ValidationError) as exc_info:
             _validate_field_types(task)
-        assert exc_info.value.field == "command"
+        assert exc_info.value.field == "id"
 
 
 # ---------------------------------------------------------------------------
@@ -256,12 +240,6 @@ class TestValidateFieldValues:
         with pytest.raises(ValidationError, match="'description' cannot be empty"):
             _validate_field_values(task)
 
-    def test_empty_string_command_raises(self):
-        task = _valid_task()
-        task["command"] = ""
-        with pytest.raises(ValidationError, match="'command' cannot be empty"):
-            _validate_field_values(task)
-
     def test_empty_string_expected_output_raises(self):
         task = _valid_task()
         task["expected_output"] = ""
@@ -273,11 +251,6 @@ class TestValidateFieldValues:
         task["description"] = "   "
         _validate_field_values(task)  # "   " is truthy
 
-    def test_whitespace_only_command_is_valid(self):
-        task = _valid_task()
-        task["command"] = "\t\n"
-        _validate_field_values(task)  # "\t\n" is truthy
-
     def test_missing_keys_use_get_and_dont_raise(self):
         """When keys are missing, task.get() returns None, which is falsy."""
         task = {"id": "task-01"}  # Missing other fields
@@ -286,10 +259,10 @@ class TestValidateFieldValues:
 
     def test_error_has_field_attribute(self):
         task = _valid_task()
-        task["command"] = ""
+        task["expected_output"] = ""
         with pytest.raises(ValidationError) as exc_info:
             _validate_field_values(task)
-        assert exc_info.value.field == "command"
+        assert exc_info.value.field == "expected_output"
 
 
 # ---------------------------------------------------------------------------
@@ -318,15 +291,13 @@ class TestValidateTask:
 
     def test_value_error_caught(self):
         task = _valid_task()
-        task["command"] = ""
-        with pytest.raises(ValidationError, match="'command' cannot be empty"):
+        task["expected_output"] = ""
+        with pytest.raises(ValidationError, match="'expected_output' cannot be empty"):
             validate_task(task)
 
     def test_validation_order_required_before_type(self):
         """Missing required fields error comes before type errors."""
-        task = {
-            "description": 123
-        }  # Missing id, command, expected_output AND wrong type
+        task = {"description": 123}  # Missing id, expected_output AND wrong type
         with pytest.raises(ValidationError, match="Missing required fields:"):
             validate_task(task)
 
@@ -335,7 +306,6 @@ class TestValidateTask:
         task = {
             "id": "task-01",
             "description": "desc",
-            "command": "cmd",
             "expected_output": None,
         }
         with pytest.raises(ValidationError, match="'expected_output' must be a string"):
@@ -463,7 +433,6 @@ class TestEdgeCases:
         task = {
             "id": "x" * 10000,
             "description": "desc" * 5000,
-            "command": "cmd" * 5000,
             "expected_output": "out" * 5000,
         }
         validate_task(task)  # should not raise
@@ -472,7 +441,6 @@ class TestEdgeCases:
         task = {
             "id": "任务-01",
             "description": "Тестовое описание 你好 мир",
-            "command": "echo '🌍'",
             "expected_output": "🌍",
         }
         validate_task(task)  # should not raise
@@ -481,7 +449,6 @@ class TestEdgeCases:
         task = {
             "id": "<script>alert('xss')</script>",
             "description": "'; DROP TABLE tasks; --",
-            "command": "cmd && rm -rf /",
             "expected_output": "\x00\x01\x02",
         }
         validate_task(task)  # should not raise (validators don't sanitize)
@@ -514,7 +481,6 @@ class TestEdgeCases:
         task = {
             "id": "a",
             "description": "b",
-            "command": "c",
             "expected_output": "d",
         }
         validate_task(task)  # should not raise
