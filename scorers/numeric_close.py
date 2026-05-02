@@ -74,7 +74,9 @@ def score(task: dict, response: str) -> dict:
 
     # --- Compare with tolerance --------------------------------------------
     try:
-        tolerance = float(task.get("tolerance", 0.01))
+        tolerance = float(
+            task.get("tolerance", task.get("metadata", {}).get("tolerance", 0.01))
+        )
     except (TypeError, ValueError):
         return {
             "score": 0.0,

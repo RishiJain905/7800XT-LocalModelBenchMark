@@ -667,3 +667,182 @@ class TestRegistry:
         """None is not registered and should raise ValueError (registry.get returns None)."""
         with pytest.raises(ValueError, match="Unknown scorer: None"):
             get_scorer(None)
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 backward-compatibility contract tests (documented task format)
+# ---------------------------------------------------------------------------
+
+
+class TestPhase1TaskFormatContract:
+    """Prove existing scorers still accept the documented Phase 1 task format.
+
+    The Phase 1 contract task dict contains:
+      - id, description, expected_output  (required)
+      - metadata.category  (determines scorer selection)
+      - metadata.keywords  (for keyword_match)
+      - metadata.expected_tool, metadata.required_argument_keys  (for json_valid)
+      - metadata.tolerance  (optional, for numeric_close)
+      - metadata.threshold  (optional, for keyword_match)
+    """
+
+    @staticmethod
+    def _make_phase1_task(
+        *,
+        category: str,
+        expected_output: str,
+        keywords: list[str] | None = None,
+        expected_tool: str | None = None,
+        required_argument_keys: list[str] | None = None,
+        tolerance: float | None = None,
+        threshold: float | None = None,
+    ) -> dict:
+        task: dict = {
+            "id": "phase1-task",
+            "description": "A Phase 1 contract task",
+            "expected_output": expected_output,
+            "metadata": {"category": category},
+        }
+        if keywords is not None:
+            task["metadata"]["keywords"] = keywords
+        if expected_tool is not None:
+            task["metadata"]["expected_tool"] = expected_tool
+        if required_argument_keys is not None:
+            task["metadata"]["required_argument_keys"] = required_argument_keys
+        if tolerance is not None:
+            task["metadata"]["tolerance"] = tolerance
+        if threshold is not None:
+            task["metadata"]["threshold"] = threshold
+        return task
+
+    @staticmethod
+    def _assert_result_shape(result: dict) -> None:
+        assert isinstance(result, dict)
+        assert "score" in result
+        assert "passed" in result
+        assert "reason" in result
+
+    # --- exact_match ---
+
+    def test_scorer_exact_match_contract_pass(self):
+        """exact_match scorer accepts Phase 1 text task and produces a shaped result."""
+        task = self._make_phase1_task(category="text", expected_output="hello")
+        scorer = get_scorer("exact_match")
+        result = scorer(task, "hello")
+        self._assert_result_shape(result)
+        assert result["passed"] is True
+        assert result["score"] == 1.0
+
+    def test_scorer_exact_match_contract_fail(self):
+        """exact_match scorer fails a mismatching response."""
+        task = self._make_phase1_task(category="text", expected_output="hello")
+        scorer = get_scorer("exact_match")
+        result = scorer(task, "world")
+        self._assert_result_shape(result)
+        assert result["passed"] is False
+        assert result["score"] == 0.0
+
+    # --- numeric_close ---
+
+    def test_scorer_numeric_close_contract_pass(self):
+        """numeric_close scorer accepts Phase 1 math task and produces a shaped result."""
+        task = self._make_phase1_task(category="math", expected_output="42")
+        scorer = get_scorer("numeric_close")
+        result = scorer(task, "The answer is 42")
+        self._assert_result_shape(result)
+        assert result["passed"] is True
+        assert result["score"] == 1.0
+
+    def test_scorer_numeric_close_contract_fail(self):
+        """numeric_close scorer fails a response outside tolerance."""
+        task = self._make_phase1_task(category="math", expected_output="42")
+        scorer = get_scorer("numeric_close")
+        result = scorer(task, "The answer is 99")
+        self._assert_result_shape(result)
+        assert result["passed"] is False
+        assert result["score"] == 0.0
+
+    def test_scorer_numeric_close_contract_with_tolerance(self):
+        """numeric_close respects metadata.tolerance from Phase 1 task format."""
+        task = self._make_phase1_task(
+            category="math", expected_output="42", tolerance=0.5
+        )
+        scorer = get_scorer("numeric_close")
+        result = scorer(task, "42.4")
+        self._assert_result_shape(result)
+        assert result["passed"] is True
+        assert result["score"] == 1.0
+
+    # --- keyword_match ---
+
+    def test_scorer_keyword_match_contract_pass(self):
+        """keyword_match scorer accepts Phase 1 keyword task and produces a shaped result."""
+        task = self._make_phase1_task(
+            category="keyword",
+            expected_output="n/a",
+            keywords=["python", "fast"],
+        )
+        scorer = get_scorer("keyword_match")
+        result = scorer(task, "Python is fast and typed")
+        self._assert_result_shape(result)
+        assert result["passed"] is True
+        assert result["score"] == 1.0
+
+    def test_scorer_keyword_match_contract_fail(self):
+        """keyword_match scorer fails a response missing too many keywords."""
+        task = self._make_phase1_task(
+            category="keyword",
+            expected_output="n/a",
+            keywords=["rust", "memory"],
+        )
+        scorer = get_scorer("keyword_match")
+        result = scorer(task, "I love Python")
+        self._assert_result_shape(result)
+        assert result["passed"] is False
+        assert result["score"] == 0.0
+
+    def test_scorer_keyword_match_contract_with_threshold(self):
+        """keyword_match respects metadata.threshold from Phase 1 task format."""
+        task = self._make_phase1_task(
+            category="keyword",
+            expected_output="n/a",
+            keywords=["alpha", "beta"],
+            threshold=0.5,
+        )
+        scorer = get_scorer("keyword_match")
+        result = scorer(task, "only alpha")
+        self._assert_result_shape(result)
+        assert result["passed"] is True
+        assert result["score"] == 0.5
+
+    # --- json_valid ---
+
+    def test_scorer_json_valid_contract_pass(self):
+        """json_valid scorer accepts Phase 1 json task and produces a shaped result."""
+        task = self._make_phase1_task(
+            category="json",
+            expected_output="calculator",
+            expected_tool="calculator",
+            required_argument_keys=["a", "b"],
+        )
+        scorer = get_scorer("json_valid")
+        response = json.dumps({"tool": "calculator", "arguments": {"a": 1, "b": 2}})
+        result = scorer(task, response)
+        self._assert_result_shape(result)
+        assert result["passed"] is True
+        assert result["score"] == 1.0
+
+    def test_scorer_json_valid_contract_fail(self):
+        """json_valid scorer fails a response with wrong tool and missing arguments."""
+        task = self._make_phase1_task(
+            category="json",
+            expected_output="calculator",
+            expected_tool="calculator",
+            required_argument_keys=["a", "b"],
+        )
+        scorer = get_scorer("json_valid")
+        response = json.dumps({"tool": "search", "arguments": {"a": 1}})
+        result = scorer(task, response)
+        self._assert_result_shape(result)
+        assert result["passed"] is False
+        assert result["score"] == pytest.approx(0.3333, abs=0.0001)

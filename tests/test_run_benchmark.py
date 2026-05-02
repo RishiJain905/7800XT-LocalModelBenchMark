@@ -25,6 +25,7 @@ from run_benchmark import (
     _resolve_scorer,
     main,
 )
+from runners.leaderboard import generate_leaderboard
 from runners.result_writer import append_summary, write_raw_results
 
 # ---------------------------------------------------------------------------
@@ -1240,3 +1241,120 @@ class TestMainRepeats:
         out = captured.out
         assert "Total tasks: 2 (repeats=3, total_attempts=6)" in out
         assert "Passed: 5" in out
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 backward-compatibility contract tests
+# ---------------------------------------------------------------------------
+
+
+class TestDryRunContract:
+    """Contract tests proving --dry-run still works with a sample task file."""
+
+    def test_dry_run_contract(self, monkeypatch, tmp_path, capsys):
+        """--dry-run prints inspection info and does NOT call run_prompt."""
+        config_path = tmp_path / "config.yaml"
+        task_path = tmp_path / "tasks.jsonl"
+        _write_yaml(config_path, _make_config(config_id="contract-cfg"))
+        _write_jsonl(
+            task_path,
+            [
+                _make_task("t-01", "What is 2+2?", "math", "4"),
+                _make_task("t-02", "Say hello", "text", "hello"),
+            ],
+        )
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "run_benchmark.py",
+                "--config",
+                str(config_path),
+                "--task-file",
+                str(task_path),
+                "--dry-run",
+            ],
+        )
+
+        with patch("run_benchmark.run_prompt") as mock_prompt:
+            main()
+            mock_prompt.assert_not_called()
+
+        captured = capsys.readouterr()
+        out = captured.out
+        assert "Config: contract-cfg" in out
+        assert "Tasks: 2" in out
+        assert 't-01: "What is 2+2?" -> numeric_close' in out
+        assert 't-02: "Say hello" -> exact_match' in out
+
+
+class TestSummaryCsvColumnsContract:
+    """Contract tests proving summary CSV preserves the Phase 1 column schema."""
+
+    EXPECTED_COLUMNS = [
+        "run_id",
+        "model_config_id",
+        "task_file",
+        "total_tasks",
+        "total_attempts",
+        "passed",
+        "failed",
+        "pass_rate",
+        "average_score",
+        "average_latency_sec",
+        "repeats",
+    ]
+
+    def test_summary_csv_header_contract(self, monkeypatch, tmp_path):
+        """append_summary produces a CSV with exactly the documented Phase 1 columns."""
+        monkeypatch.chdir(tmp_path)
+        results = [
+            {
+                "latency_sec": 0.5,
+                "score": 1.0,
+                "passed": True,
+                "repeat_index": 0,
+                "repeat_count": 1,
+            },
+        ]
+        append_summary(results, "cfg", "tasks.jsonl", "run-1", repeats=1, total_tasks=1)
+        summary_path = tmp_path / "results" / "summary.csv"
+        with open(summary_path, encoding="utf-8") as f:
+            lines = f.read().strip().split("\n")
+        header = lines[0].split(",")
+        assert header == self.EXPECTED_COLUMNS
+
+    def test_summary_csv_can_be_read_by_generate_leaderboard(
+        self, monkeypatch, tmp_path
+    ):
+        """A CSV produced by append_summary can be consumed by generate_leaderboard."""
+        monkeypatch.chdir(tmp_path)
+        results = [
+            {
+                "latency_sec": 1.234,
+                "score": 0.85,
+                "passed": True,
+                "repeat_index": 0,
+                "repeat_count": 1,
+            },
+            {
+                "latency_sec": 2.345,
+                "score": 0.65,
+                "passed": False,
+                "repeat_index": 0,
+                "repeat_count": 1,
+            },
+        ]
+        append_summary(results, "cfg", "tasks.jsonl", "run-1", repeats=1, total_tasks=2)
+        summary_path = tmp_path / "results" / "summary.csv"
+        output_path = tmp_path / "results" / "reports" / "leaderboard.md"
+
+        generate_leaderboard(str(summary_path), str(output_path))
+
+        assert output_path.exists()
+        content = output_path.read_text(encoding="utf-8")
+        assert "cfg" in content
+        assert "tasks.jsonl" in content
+        # Basic sanity that values are present in the leaderboard
+        assert "0.75" in content  # average_score
+        assert "50.0%" in content  # pass rate (1 passed / 2 total)

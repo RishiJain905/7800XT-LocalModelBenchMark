@@ -69,7 +69,7 @@ def score(task: dict, response: str) -> dict:
             unmatched.append(str(keyword))
 
     score_value = len(matched) / len(keywords)
-    threshold = task.get("threshold", 0.7)
+    threshold = task.get("threshold", task.get("metadata", {}).get("threshold", 0.7))
     passed = score_value >= threshold
 
     if passed:
