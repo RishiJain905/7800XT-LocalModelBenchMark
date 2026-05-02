@@ -30,14 +30,16 @@ def score(task: dict, response: str) -> dict:
         response = str(response)
 
     # --- Handle missing / empty expected_keywords --------------------------
-    if "expected_keywords" not in task:
+    keywords = task.get("expected_keywords")
+    if keywords is None:
+        keywords = task.get("metadata", {}).get("keywords")
+
+    if keywords is None:
         return {
             "score": 0.0,
             "passed": False,
             "reason": "Task is missing 'expected_keywords' key",
         }
-
-    keywords = task["expected_keywords"]
 
     if not isinstance(keywords, list):
         return {

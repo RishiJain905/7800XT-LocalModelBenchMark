@@ -62,9 +62,14 @@ def score(task: dict, response: str) -> dict:
     reasons: list[str] = ["JSON parsed successfully"]
 
     # 2. tool matching
-    if "expected_tool" in task:
+    metadata = task.get("metadata", {})
+    expected_tool = task.get("expected_tool", metadata.get("expected_tool"))
+    required_keys = task.get(
+        "required_argument_keys", metadata.get("required_argument_keys")
+    )
+
+    if expected_tool is not None:
         checks_total += 1
-        expected_tool = task["expected_tool"]
 
         if "tool" not in parsed:
             reasons.append(f"Missing 'tool' key (expected '{expected_tool}')")
@@ -77,9 +82,8 @@ def score(task: dict, response: str) -> dict:
             reasons.append(f"Tool matches: '{expected_tool}'")
 
     # 3. required argument keys
-    if "required_argument_keys" in task:
+    if required_keys is not None:
         checks_total += 1
-        required_keys = task["required_argument_keys"]
 
         if not isinstance(required_keys, list):
             reasons.append(

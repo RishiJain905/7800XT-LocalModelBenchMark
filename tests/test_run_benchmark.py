@@ -699,6 +699,27 @@ class TestMainDryRun:
         assert 't-01: "What is 2+2?" -> numeric_close' in out
         assert 't-02: "Say hello" -> exact_match' in out
 
+    def test_repo_sample_task_file_dry_run_loads(self, monkeypatch, capsys):
+        """The documented sample task file should load in dry-run mode."""
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "run_benchmark.py",
+                "--config",
+                "configs/qwen-9b-q8-4k.yaml",
+                "--task-file",
+                "data/tasks/task_01.jsonl",
+                "--dry-run",
+            ],
+        )
+
+        main()
+
+        captured = capsys.readouterr()
+        assert "Config: qwen-9b-q8-4k" in captured.out
+        assert "Tasks:" in captured.out
+
 
 class TestMainFullRun:
     """Normal execution with mocked model and scorer."""

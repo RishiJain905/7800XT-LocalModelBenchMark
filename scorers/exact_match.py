@@ -28,14 +28,15 @@ def score(task: dict, response: str) -> dict:
     if not isinstance(response, str):
         response = str(response)
 
-    if "expected" not in task:
+    expected_key = "expected" if "expected" in task else "expected_output"
+    if expected_key not in task:
         return {
             "score": 0.0,
             "passed": False,
             "reason": "Task is missing 'expected' key",
         }
 
-    expected_raw = task["expected"]
+    expected_raw = task[expected_key]
     if expected_raw is None:
         return {
             "score": 0.0,

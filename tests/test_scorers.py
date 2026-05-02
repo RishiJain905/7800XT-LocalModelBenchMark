@@ -66,6 +66,13 @@ class TestExactMatchScore:
         assert result["passed"] is False
         assert "missing 'expected' key" in result["reason"]
 
+    def test_uses_expected_output_when_expected_is_absent(self):
+        """Benchmark task files use expected_output as their reference answer."""
+        task = {"expected_output": "hello"}
+        result = exact_match_score(task, "hello")
+        assert result["score"] == 1.0
+        assert result["passed"] is True
+
     def test_none_response(self):
         """A None response should be rejected."""
         task = {"expected": "hello"}
@@ -203,6 +210,13 @@ class TestNumericCloseScore:
         assert result["score"] == 0.0
         assert result["passed"] is False
         assert "missing 'expected' key" in result["reason"]
+
+    def test_uses_expected_output_when_expected_is_absent(self):
+        """Numeric tasks should work with the loader's expected_output field."""
+        task = {"expected_output": "42"}
+        result = numeric_close_score(task, "The answer is 42")
+        assert result["score"] == 1.0
+        assert result["passed"] is True
 
     def test_non_numeric_expected(self):
         """A non-numeric 'expected' value yields a parse error."""
@@ -346,6 +360,13 @@ class TestKeywordMatchScore:
         assert result["passed"] is False
         assert "missing 'expected_keywords' key" in result["reason"]
 
+    def test_uses_metadata_keywords_when_expected_keywords_absent(self):
+        """README task format stores keyword expectations under metadata.keywords."""
+        task = {"metadata": {"keywords": ["attention", "encoder"]}}
+        result = keyword_match_score(task, "Attention layers are used in an encoder.")
+        assert result["score"] == 1.0
+        assert result["passed"] is True
+
     def test_none_response(self):
         """None response should return a failure."""
         task = {"expected_keywords": ["test"]}
@@ -419,9 +440,24 @@ class TestJsonValidScore:
         result = json_valid_score(task, response)
         assert result["score"] == 1.0
         assert result["passed"] is True
+        assert "Tool matches" in result["reason"]
+        assert "All required argument keys present" in result["reason"]
         assert "JSON parsed successfully" in result["reason"]
         assert "Tool matches" in result["reason"]
         assert "All required argument keys present" in result["reason"]
+
+    def test_uses_metadata_tool_expectations(self):
+        """README task format stores JSON scoring expectations under metadata."""
+        task = {
+            "metadata": {
+                "expected_tool": "calculator",
+                "required_argument_keys": ["a", "b"],
+            }
+        }
+        response = self._make_response(tool="calculator", arguments={"a": 1, "b": 2})
+        result = json_valid_score(task, response)
+        assert result["score"] == 1.0
+        assert result["passed"] is True
 
     # Invalid JSON
 

@@ -36,14 +36,15 @@ def score(task: dict, response: str) -> dict:
         response = str(response)
 
     # --- Validate / extract expected value ---------------------------------
-    if "expected" not in task:
+    expected_key = "expected" if "expected" in task else "expected_output"
+    if expected_key not in task:
         return {
             "score": 0.0,
             "passed": False,
             "reason": "Task is missing 'expected' key",
         }
 
-    expected_raw = task["expected"]
+    expected_raw = task[expected_key]
     try:
         expected = float(expected_raw)
     except (TypeError, ValueError):
