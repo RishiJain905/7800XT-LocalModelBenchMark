@@ -1,0 +1,4 @@
+{"id":"math_pi","description":"What is pi rounded to 2 decimal places? Reply with only the number.","expected_output":"3.14","metadata":{"category":"math"}}
+{"id":"text_opposite_hot","description":"What is the opposite of hot? Reply with only one word.","expected_output":"cold","metadata":{"category":"text"}}
+{"id":"keyword_git_commit","description":"Briefly describe what a Git commit stores.","expected_output":"snapshot changes message","metadata":{"category":"keyword","keywords":["snapshot","changes","message"]}}
+{"id":"json_email_tool","description":"Return only JSON for sending an email to Alex. Use this shape: {\"tool\":\"send_email\",\"arguments\":{\"recipient\":\"Alex\"}}","expected_output":"send_email","metadata":{"category":"json","expected_tool":"send_email","required_argument_keys":["recipient"]}}
