@@ -25,6 +25,7 @@ from run_benchmark import (
     _resolve_scorer,
     main,
 )
+from runners.result_writer import append_summary, write_raw_results
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -90,6 +91,55 @@ def _write_jsonl(path: os.PathLike, lines: list[dict]) -> None:
     with open(path, "w", encoding="utf-8") as f:
         for line in lines:
             f.write(json.dumps(line) + "\n")
+
+
+@pytest.fixture
+def sample_results() -> list[dict]:
+    """Return a sample list of 3 result dicts (2 passed, 1 failed)."""
+    return [
+        {
+            "run_id": "r1",
+            "model_config_id": "cfg",
+            "task_file": "t.jsonl",
+            "task_id": "t1",
+            "category": "text",
+            "prompt": "q1",
+            "response": "a1",
+            "latency_sec": 0.5,
+            "score": 1.0,
+            "passed": True,
+            "reason": "ok",
+            "settings": {},
+        },
+        {
+            "run_id": "r1",
+            "model_config_id": "cfg",
+            "task_file": "t.jsonl",
+            "task_id": "t2",
+            "category": "text",
+            "prompt": "q2",
+            "response": "a2",
+            "latency_sec": 1.5,
+            "score": 0.0,
+            "passed": False,
+            "reason": "wrong",
+            "settings": {},
+        },
+        {
+            "run_id": "r1",
+            "model_config_id": "cfg",
+            "task_file": "t.jsonl",
+            "task_id": "t3",
+            "category": "text",
+            "prompt": "q3",
+            "response": "a3",
+            "latency_sec": 1.0,
+            "score": 1.0,
+            "passed": True,
+            "reason": "ok",
+            "settings": {},
+        },
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -263,6 +313,167 @@ class TestBuildErrorResult:
         assert result["prompt"] == "fail task"
         assert result["expected"] == "n/a"
         assert isinstance(result["settings"], dict)
+
+
+# ---------------------------------------------------------------------------
+# write_raw_results
+# ---------------------------------------------------------------------------
+
+
+class TestWriteRawResults:
+    """Writing raw benchmark results to JSONL files."""
+
+    def test_creates_directory_and_writes_jsonl(
+        self, monkeypatch, tmp_path, sample_results
+    ):
+        """Directory and JSONL file are created with one JSON object per line."""
+        monkeypatch.chdir(tmp_path)
+        path = write_raw_results(sample_results, "model-cfg", "tasks.jsonl", "run-1")
+        assert os.path.exists(path)
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().strip().split("\n")
+        assert len(lines) == len(sample_results)
+        for line, expected in zip(lines, sample_results):
+            assert json.loads(line) == expected
+
+    def test_empty_results_list(self, monkeypatch, tmp_path):
+        """An empty results list produces an empty file and still returns a path."""
+        monkeypatch.chdir(tmp_path)
+        path = write_raw_results([], "model-cfg", "tasks.jsonl", "run-1")
+        assert os.path.exists(path)
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert content == ""
+
+    def test_directory_structure(self, monkeypatch, tmp_path):
+        """Correct nested directory is created under the current working directory."""
+        monkeypatch.chdir(tmp_path)
+        write_raw_results([], "my-model", "tasks.jsonl", "run-1")
+        expected_dir = tmp_path / "results" / "raw" / "my-model"
+        assert expected_dir.exists()
+        assert expected_dir.is_dir()
+
+    def test_stem_extraction(self, monkeypatch, tmp_path):
+        """Filename stem is extracted from the task_file path."""
+        monkeypatch.chdir(tmp_path)
+        task_file = "/some/path/math/basic_math.jsonl"
+        path = write_raw_results([], "model-cfg", task_file, "xyz")
+        filename = os.path.basename(path)
+        assert filename == "basic_math_xyz.jsonl"
+
+    def test_returns_absolute_path(self, monkeypatch, tmp_path, sample_results):
+        """Return value is an absolute path string."""
+        monkeypatch.chdir(tmp_path)
+        path = write_raw_results(sample_results, "model-cfg", "tasks.jsonl", "run-1")
+        assert os.path.isabs(path)
+
+
+# ---------------------------------------------------------------------------
+# append_summary
+# ---------------------------------------------------------------------------
+
+
+class TestAppendSummary:
+    """Appending benchmark summary rows to a CSV file."""
+
+    def test_creates_csv_with_header(self, monkeypatch, tmp_path, sample_results):
+        """When summary.csv does not exist, a header row is written first."""
+        monkeypatch.chdir(tmp_path)
+        append_summary(sample_results, "cfg", "tasks.jsonl", "run-1")
+        summary_path = tmp_path / "results" / "summary.csv"
+        assert summary_path.exists()
+        with open(summary_path, encoding="utf-8") as f:
+            content = f.read().strip().split("\n")
+        assert len(content) == 2  # header + 1 data row
+        header = content[0]
+        assert header == (
+            "run_id,model_config_id,task_file,total_tasks,passed,failed,"
+            "pass_rate,average_score,average_latency_sec"
+        )
+
+    def test_appends_row(self, monkeypatch, tmp_path):
+        """Calling append_summary twice creates two data rows under one header."""
+        monkeypatch.chdir(tmp_path)
+        results1 = [{"latency_sec": 1.0, "score": 1.0, "passed": True}]
+        results2 = [{"latency_sec": 2.0, "score": 0.0, "passed": False}]
+        append_summary(results1, "cfg", "tasks.jsonl", "run-1")
+        append_summary(results2, "cfg", "tasks.jsonl", "run-2")
+        summary_path = tmp_path / "results" / "summary.csv"
+        with open(summary_path, encoding="utf-8") as f:
+            lines = f.read().strip().split("\n")
+        assert len(lines) == 3  # header + 2 data rows
+        assert "run-1" in lines[1]
+        assert "run-2" in lines[2]
+
+    def test_stats_computation_all_passed(self, monkeypatch, tmp_path):
+        """All-passed results produce pass_rate=1.0 and correct averages."""
+        monkeypatch.chdir(tmp_path)
+        results = [
+            {"latency_sec": 0.5, "score": 0.8, "passed": True},
+            {"latency_sec": 1.5, "score": 1.0, "passed": True},
+            {"latency_sec": 1.0, "score": 0.9, "passed": True},
+        ]
+        append_summary(results, "cfg", "tasks.jsonl", "run-1")
+        summary_path = tmp_path / "results" / "summary.csv"
+        with open(summary_path, encoding="utf-8") as f:
+            lines = f.read().strip().split("\n")
+        data = lines[1]
+        parts = data.split(",")
+        assert parts[3] == "3"
+        assert parts[4] == "3"
+        assert parts[5] == "0"
+        assert parts[6] == "1.0000"
+        assert float(parts[7]) == pytest.approx(0.9, abs=0.0001)
+        assert float(parts[8]) == pytest.approx(1.0, abs=0.001)
+
+    def test_stats_computation_some_failed(self, monkeypatch, tmp_path, sample_results):
+        """Mixed-pass results produce correct pass_rate and averages."""
+        monkeypatch.chdir(tmp_path)
+        append_summary(sample_results, "cfg", "tasks.jsonl", "run-1")
+        summary_path = tmp_path / "results" / "summary.csv"
+        with open(summary_path, encoding="utf-8") as f:
+            lines = f.read().strip().split("\n")
+        data = lines[1]
+        parts = data.split(",")
+        assert parts[3] == "3"
+        assert parts[4] == "2"
+        assert parts[5] == "1"
+        assert parts[6] == "0.6667"
+        assert float(parts[7]) == pytest.approx(0.6667, abs=0.0001)
+        assert float(parts[8]) == pytest.approx(1.000, abs=0.001)
+
+    def test_empty_results_list(self, monkeypatch, tmp_path):
+        """Empty results produce zeroes across all summary columns."""
+        monkeypatch.chdir(tmp_path)
+        append_summary([], "cfg", "tasks.jsonl", "run-1")
+        summary_path = tmp_path / "results" / "summary.csv"
+        with open(summary_path, encoding="utf-8") as f:
+            lines = f.read().strip().split("\n")
+        data = lines[1]
+        parts = data.split(",")
+        assert parts[3] == "0"
+        assert parts[4] == "0"
+        assert parts[5] == "0"
+        assert parts[6] == "0.0000"
+        assert parts[7] == "0.0000"
+        assert parts[8] == "0.000"
+
+    def test_float_formatting(self, monkeypatch, tmp_path):
+        """pass_rate uses :.4f and average_latency_sec uses :.3f."""
+        monkeypatch.chdir(tmp_path)
+        results = [
+            {"latency_sec": 1.23456, "score": 0.666666, "passed": True},
+            {"latency_sec": 1.23456, "score": 0.666666, "passed": False},
+        ]
+        append_summary(results, "cfg", "tasks.jsonl", "run-1")
+        summary_path = tmp_path / "results" / "summary.csv"
+        with open(summary_path, encoding="utf-8") as f:
+            lines = f.read().strip().split("\n")
+        data = lines[1]
+        parts = data.split(",")
+        assert parts[6] == "0.5000"  # 1 passed / 2 total -> .4f
+        assert parts[7] == "0.6667"  # avg score -> .4f
+        assert parts[8] == "1.235"  # avg latency -> .3f
 
 
 # ---------------------------------------------------------------------------
@@ -476,3 +687,128 @@ class TestMainFullRun:
         assert "Passed: 1" in out
         assert "Average score: 0.50" in out
         assert "Average latency: 0.12s" in out
+
+    def test_write_raw_results_is_called(self, monkeypatch, tmp_path):
+        """Verify that write_raw_results and append_summary are invoked once."""
+        config_path = tmp_path / "config.yaml"
+        task_path = tmp_path / "tasks.jsonl"
+        _write_yaml(config_path, _make_config(config_id="full-cfg"))
+        _write_jsonl(
+            task_path,
+            [
+                _make_task("t-01", "Q1", "text", "a1"),
+            ],
+        )
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "run_benchmark.py",
+                "--config",
+                str(config_path),
+                "--task-file",
+                str(task_path),
+            ],
+        )
+
+        def fake_run_prompt(config, prompt):
+            return _make_model_result(response="answer", latency_sec=0.5)
+
+        def fake_scorer(task, response):
+            return _make_score_result(score=1.0, passed=True, reason="matched")
+
+        with patch("run_benchmark.run_prompt", side_effect=fake_run_prompt):
+            with patch("run_benchmark.get_scorer", return_value=fake_scorer):
+                with patch("run_benchmark.write_raw_results") as mock_write:
+                    with patch("run_benchmark.append_summary") as mock_append:
+                        main()
+                        mock_write.assert_called_once()
+                        mock_append.assert_called_once()
+
+    def test_output_paths_are_printed(self, monkeypatch, tmp_path, capsys):
+        """Verify that the raw results and summary paths are printed to stdout."""
+        config_path = tmp_path / "config.yaml"
+        task_path = tmp_path / "tasks.jsonl"
+        _write_yaml(config_path, _make_config(config_id="full-cfg"))
+        _write_jsonl(
+            task_path,
+            [
+                _make_task("t-01", "Q1", "text", "a1"),
+            ],
+        )
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "run_benchmark.py",
+                "--config",
+                str(config_path),
+                "--task-file",
+                str(task_path),
+            ],
+        )
+
+        def fake_run_prompt(config, prompt):
+            return _make_model_result(response="answer", latency_sec=0.5)
+
+        def fake_scorer(task, response):
+            return _make_score_result(score=1.0, passed=True, reason="matched")
+
+        with patch("run_benchmark.run_prompt", side_effect=fake_run_prompt):
+            with patch("run_benchmark.get_scorer", return_value=fake_scorer):
+                with patch(
+                    "run_benchmark.write_raw_results", return_value="/fake/raw.jsonl"
+                ):
+                    with patch(
+                        "run_benchmark.append_summary", return_value="/fake/summary.csv"
+                    ):
+                        main()
+
+        captured = capsys.readouterr()
+        out = captured.out
+        assert "Saved raw results to" in out
+        assert "Update summary at" in out
+
+    def test_write_raw_results_error_handling(self, monkeypatch, tmp_path, capsys):
+        """If write_raw_results raises OSError, an error is printed and benchmark continues."""
+        config_path = tmp_path / "config.yaml"
+        task_path = tmp_path / "tasks.jsonl"
+        _write_yaml(config_path, _make_config(config_id="err-cfg"))
+        _write_jsonl(
+            task_path,
+            [
+                _make_task("t-01", "Q1", "text", "a1"),
+            ],
+        )
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "run_benchmark.py",
+                "--config",
+                str(config_path),
+                "--task-file",
+                str(task_path),
+            ],
+        )
+
+        def fake_run_prompt(config, prompt):
+            return _make_model_result(response="answer", latency_sec=0.5)
+
+        def fake_scorer(task, response):
+            return _make_score_result(score=1.0, passed=True, reason="matched")
+
+        with patch("run_benchmark.run_prompt", side_effect=fake_run_prompt):
+            with patch("run_benchmark.get_scorer", return_value=fake_scorer):
+                with patch(
+                    "run_benchmark.write_raw_results", side_effect=OSError("disk full")
+                ):
+                    with patch(
+                        "run_benchmark.append_summary", return_value="/fake/summary.csv"
+                    ) as mock_append:
+                        main()
+                        mock_append.assert_called_once()
+
+        captured = capsys.readouterr()
+        err = captured.err
+        assert "Error writing raw results" in err

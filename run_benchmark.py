@@ -11,6 +11,7 @@ from typing import Any
 
 from runners.config_loader import load_config
 from runners.llama_client import run_prompt
+from runners.result_writer import append_summary, write_raw_results
 from runners.task_loader import load_tasks
 from scorers.registry import get_scorer
 
@@ -186,6 +187,19 @@ def main() -> None:
     print(f"Passed: {passed}")
     print(f"Average score: {avg_score:.2f}")
     print(f"Average latency: {avg_latency:.2f}s")
+
+    # --- Persist results to disk -------------------------------------------
+    try:
+        raw_path = write_raw_results(results, config["id"], args.task_file, run_id)
+        print(f"Saved raw results to {raw_path}")
+    except OSError as exc:
+        print(f"Error writing raw results: {exc}", file=sys.stderr)
+
+    try:
+        summary_path = append_summary(results, config["id"], args.task_file, run_id)
+        print(f"Update summary at {summary_path}")
+    except OSError as exc:
+        print(f"Error writing summary: {exc}", file=sys.stderr)
 
 
 if __name__ == "__main__":
