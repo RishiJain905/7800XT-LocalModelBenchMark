@@ -5,6 +5,7 @@ from .validators import ValidationError, validate_task, validate_field
 from .leaderboard import generate_leaderboard
 from .result_writer import write_raw_results, append_summary
 from .suite_registry import list_suites, get_suite, clear_cache
+from .model_registry import list_model_configs, get_model_config
 
 __all__ = [
     "load_tasks",
@@ -17,4 +18,6 @@ __all__ = [
     "list_suites",
     "get_suite",
     "clear_cache",
+    "list_model_configs",
+    "get_model_config",
 ]

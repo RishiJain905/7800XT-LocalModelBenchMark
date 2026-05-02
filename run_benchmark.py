@@ -6,6 +6,7 @@ Supports direct task files (--task-file) or named benchmark suites (--suite).
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from datetime import datetime
 import uuid
@@ -98,6 +99,31 @@ def _build_error_result(
     }
 
 
+def _resolve_config_path(config_arg: str) -> str:
+    """Resolve --config argument to a filesystem path.
+
+    If config_arg is an existing file path, use it directly (backward compat).
+    Otherwise, treat it as a model ID and look it up via the model registry.
+    """
+    if os.path.isfile(config_arg):
+        return config_arg
+    # Treat as model ID — lookup and resolve to file path
+    from runners.model_registry import get_model_config
+
+    try:
+        get_model_config(config_arg)  # validate it exists
+    except KeyError:
+        raise FileNotFoundError(
+            f"Model config not found: '{config_arg}'. "
+            f"Use a path to a .yaml file or a model ID from configs/models/."
+        )
+    # Resolve to the expected file path
+    here = os.path.dirname(os.path.abspath(__file__))
+    return os.path.normpath(
+        os.path.join(here, "configs", "models", f"{config_arg}.yaml")
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Local Model Benchmark Harness")
     parser.add_argument("--config", required=True, help="Path to YAML config file")
@@ -110,7 +136,7 @@ def main() -> None:
     task_source.add_argument(
         "--suite",
         help="Benchmark suite ID from benchmarks/suites.yaml"
-             " (mutually exclusive with --task-file)",
+        " (mutually exclusive with --task-file)",
     )
 
     parser.add_argument(
@@ -127,8 +153,9 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
-        config = load_config(args.config)
-    except (FileNotFoundError, ValueError) as exc:
+        config_path = _resolve_config_path(args.config)
+        config = load_config(config_path)
+    except (FileNotFoundError, ValueError, KeyError) as exc:
         print(f"Error loading config: {exc}", file=sys.stderr)
         sys.exit(1)
 
@@ -184,9 +211,7 @@ def main() -> None:
                     task, config, model_result, score_result, task_file, run_id
                 )
             except Exception as exc:
-                result = _build_error_result(
-                    task, config, str(exc), task_file, run_id
-                )
+                result = _build_error_result(task, config, str(exc), task_file, run_id)
             result["repeat_index"] = repeat_idx
             result["repeat_count"] = args.repeats
             flat_results.append(result)
