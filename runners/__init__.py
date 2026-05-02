@@ -7,6 +7,7 @@ from .result_writer import write_raw_results, append_summary
 from .suite_registry import list_suites, get_suite, clear_cache
 from .model_registry import list_model_configs, get_model_config
 from .server_health import check_server
+from .benchmark_runner import run_benchmark
 
 __all__ = [
     "load_tasks",
@@ -22,4 +23,5 @@ __all__ = [
     "list_model_configs",
     "get_model_config",
     "check_server",
+    "run_benchmark",
 ]

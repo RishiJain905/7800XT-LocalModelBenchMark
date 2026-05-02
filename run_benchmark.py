@@ -8,95 +8,14 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from datetime import datetime
-import uuid
 from typing import Any
 
 from runners.config_loader import load_config
-from runners.llama_client import run_prompt
 from runners.leaderboard import generate_leaderboard
 from runners.result_writer import append_summary, write_raw_results
 from runners.task_loader import load_tasks
 from runners.suite_registry import get_suite
-from scorers.registry import get_scorer
-
-
-CATEGORY_SCORER_MAP: dict[str, str] = {
-    "math": "numeric_close",
-    "numeric": "numeric_close",
-    "text": "exact_match",
-    "general": "exact_match",
-    "keyword": "keyword_match",
-    "code": "keyword_match",
-    "json": "json_valid",
-    "tool": "json_valid",
-}
-
-_FALLBACK_SCORER = "exact_match"
-
-
-def _resolve_scorer(task: dict[str, Any]) -> str:
-    category: str = task.get("metadata", {}).get("category", "")
-    return CATEGORY_SCORER_MAP.get(category, _FALLBACK_SCORER)
-
-
-def _extract_settings(config: dict[str, Any]) -> dict[str, Any]:
-    settings = config.get("settings", {})
-    return {
-        "context_size": settings.get("context_size"),
-        "temperature": settings.get("temperature"),
-        "top_p": settings.get("top_p"),
-        "max_tokens": settings.get("max_tokens"),
-    }
-
-
-def _build_result(
-    task: dict[str, Any],
-    config: dict[str, Any],
-    model_result: dict[str, Any],
-    score_result: dict[str, Any],
-    task_file: str,
-    run_id: str,
-) -> dict[str, Any]:
-    return {
-        "run_id": run_id,
-        "model_config_id": config["id"],
-        "task_id": task["id"],
-        "category": task.get("metadata", {}).get("category", ""),
-        "task_file": task_file,
-        "prompt": task["description"],
-        "expected": task.get("expected_output", ""),
-        "response": model_result["response"],
-        "latency_sec": model_result["latency_sec"],
-        "score": score_result["score"],
-        "passed": score_result["passed"],
-        "reason": score_result["reason"],
-        "settings": _extract_settings(config),
-    }
-
-
-def _build_error_result(
-    task: dict[str, Any],
-    config: dict[str, Any],
-    error: str,
-    task_file: str,
-    run_id: str,
-) -> dict[str, Any]:
-    return {
-        "run_id": run_id,
-        "model_config_id": config["id"],
-        "task_id": task["id"],
-        "category": task.get("metadata", {}).get("category", ""),
-        "task_file": task_file,
-        "prompt": task["description"],
-        "expected": task.get("expected_output", ""),
-        "response": "",
-        "latency_sec": 0.0,
-        "score": 0.0,
-        "passed": False,
-        "reason": str(error),
-        "settings": _extract_settings(config),
-    }
+from runners.benchmark_runner import run_benchmark
 
 
 def _resolve_config_path(config_arg: str) -> str:
@@ -181,7 +100,16 @@ def main() -> None:
         print("No tasks found in task file.", file=sys.stderr)
         sys.exit(1)
 
+    options: dict[str, Any] = {
+        "repeats": args.repeats,
+        "dry_run": args.dry_run,
+        "task_file": task_file,
+    }
+
     if args.dry_run:
+        # Keep exact same dry-run output format
+        from runners.benchmark_runner import _resolve_scorer
+
         print(f"Config: {config['id']}")
         print(f"Tasks: {len(tasks)}")
         if suite_info:
@@ -196,45 +124,37 @@ def main() -> None:
             print(f'  {task["id"]}: "{description}" -> {scorer_name}')
         return
 
-    run_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + f"_{uuid.uuid4().hex[:8]}"
-    flat_results: list[dict[str, Any]] = []
+    total_attempts = len(tasks) * args.repeats
+    _counter_state = [1]
 
-    for task in tasks:
-        scorer_name = _resolve_scorer(task)
-        for repeat_idx in range(args.repeats):
-            prompt: str = task["description"]
-            try:
-                model_result = run_prompt(config, prompt)
-                scorer = get_scorer(scorer_name)
-                score_result = scorer(task, model_result["response"])
-                result = _build_result(
-                    task, config, model_result, score_result, task_file, run_id
-                )
-            except Exception as exc:
-                result = _build_error_result(task, config, str(exc), task_file, run_id)
-            result["repeat_index"] = repeat_idx
-            result["repeat_count"] = args.repeats
-            flat_results.append(result)
-            print(
-                f"[{len(flat_results)}/{len(tasks) * args.repeats}] {task['id']}"
-                f" (repeat {repeat_idx + 1}/{args.repeats})  "
-                f"score={result['score']}  "
-                f"latency={result['latency_sec']:.2f}s"
-            )
+    def _print_result(result: dict[str, Any]) -> None:
+        idx = _counter_state[0]
+        _counter_state[0] += 1
+        print(
+            f"[{idx}/{total_attempts}] {result['task_id']}"
+            f" (repeat {result['repeat_index'] + 1}/{args.repeats})  "
+            f"score={result['score']}  "
+            f"latency={result['latency_sec']:.2f}s"
+        )
 
-    total = len(flat_results)
-    actual_tasks = len(tasks)
-    passed = sum(1 for r in flat_results if r["passed"])
-    avg_score = sum(r["score"] for r in flat_results) / total if total else 0.0
-    avg_latency = sum(r["latency_sec"] for r in flat_results) / total if total else 0.0
+    summary = run_benchmark(
+        config,
+        tasks,
+        options,
+        result_callback=_print_result,
+    )
+
+    flat_results = summary["results"]
+    run_id = summary["run_id"]
 
     print()
     print(
-        f"Total tasks: {actual_tasks} (repeats={args.repeats}, total_attempts={total})"
+        f"Total tasks: {summary['total_tasks']} "
+        f"(repeats={args.repeats}, total_attempts={summary['total_attempts']})"
     )
-    print(f"Passed: {passed}")
-    print(f"Average score: {avg_score:.2f}")
-    print(f"Average latency: {avg_latency:.2f}s")
+    print(f"Passed: {summary['passed']}")
+    print(f"Average score: {summary['average_score']:.2f}")
+    print(f"Average latency: {summary['average_latency_sec']:.2f}s")
 
     try:
         raw_path = write_raw_results(flat_results, config["id"], task_file, run_id)
@@ -249,7 +169,7 @@ def main() -> None:
             task_file,
             run_id,
             repeats=args.repeats,
-            total_tasks=actual_tasks,
+            total_tasks=summary["total_tasks"],
         )
         print(f"Update summary at {summary_path}")
     except OSError as exc:

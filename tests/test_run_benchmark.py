@@ -16,15 +16,14 @@ from unittest.mock import patch, MagicMock
 import pytest
 import yaml
 
-from run_benchmark import (
-    CATEGORY_SCORER_MAP,
-    _FALLBACK_SCORER,
+from run_benchmark import main
+from runners.benchmark_runner import (
     _build_error_result,
     _build_result,
     _extract_settings,
     _resolve_scorer,
-    main,
 )
+
 from runners.leaderboard import generate_leaderboard
 from runners.result_writer import append_summary, write_raw_results
 
@@ -172,24 +171,24 @@ class TestResolveScorer:
     def test_unknown_category_uses_fallback(self):
         """A category absent from the map falls back to exact_match."""
         task = _make_task(category="weird")
-        assert _resolve_scorer(task) == _FALLBACK_SCORER
+        assert _resolve_scorer(task) == "exact_match"
 
     def test_empty_string_category_uses_fallback(self):
         """Empty string category falls back to exact_match."""
         task = _make_task(category="")
-        assert _resolve_scorer(task) == _FALLBACK_SCORER
+        assert _resolve_scorer(task) == "exact_match"
 
     def test_missing_category_uses_fallback(self):
         """Missing category key inside metadata falls back."""
         task = _make_task(category="general")
         del task["metadata"]["category"]
-        assert _resolve_scorer(task) == _FALLBACK_SCORER
+        assert _resolve_scorer(task) == "exact_match"
 
     def test_missing_metadata_uses_fallback(self):
         """Missing metadata entirely falls back."""
         task = _make_task(category="general")
         del task["metadata"]
-        assert _resolve_scorer(task) == _FALLBACK_SCORER
+        assert _resolve_scorer(task) == "exact_match"
 
 
 # ---------------------------------------------------------------------------
@@ -689,7 +688,7 @@ class TestMainDryRun:
             ],
         )
 
-        with patch("run_benchmark.run_prompt") as mock_prompt:
+        with patch("runners.benchmark_runner.run_prompt") as mock_prompt:
             main()
             mock_prompt.assert_not_called()
 
@@ -754,8 +753,8 @@ class TestMainFullRun:
         def fake_scorer(task, response):
             return _make_score_result(score=1.0, passed=True, reason="matched")
 
-        with patch("run_benchmark.run_prompt", side_effect=fake_run_prompt):
-            with patch("run_benchmark.get_scorer", return_value=fake_scorer):
+        with patch("runners.benchmark_runner.run_prompt", side_effect=fake_run_prompt):
+            with patch("runners.benchmark_runner.get_scorer", return_value=fake_scorer):
                 main()
 
         captured = capsys.readouterr()
@@ -802,8 +801,8 @@ class TestMainFullRun:
         def fake_scorer(task, response):
             return _make_score_result(score=1.0, passed=True, reason="matched")
 
-        with patch("run_benchmark.run_prompt", side_effect=fake_run_prompt):
-            with patch("run_benchmark.get_scorer", return_value=fake_scorer):
+        with patch("runners.benchmark_runner.run_prompt", side_effect=fake_run_prompt):
+            with patch("runners.benchmark_runner.get_scorer", return_value=fake_scorer):
                 main()
 
         captured = capsys.readouterr()
@@ -844,8 +843,8 @@ class TestMainFullRun:
         def fake_scorer(task, response):
             return _make_score_result(score=1.0, passed=True, reason="matched")
 
-        with patch("run_benchmark.run_prompt", side_effect=fake_run_prompt):
-            with patch("run_benchmark.get_scorer", return_value=fake_scorer):
+        with patch("runners.benchmark_runner.run_prompt", side_effect=fake_run_prompt):
+            with patch("runners.benchmark_runner.get_scorer", return_value=fake_scorer):
                 with patch("run_benchmark.write_raw_results") as mock_write:
                     with patch("run_benchmark.append_summary") as mock_append:
                         main()
@@ -881,8 +880,8 @@ class TestMainFullRun:
         def fake_scorer(task, response):
             return _make_score_result(score=1.0, passed=True, reason="matched")
 
-        with patch("run_benchmark.run_prompt", side_effect=fake_run_prompt):
-            with patch("run_benchmark.get_scorer", return_value=fake_scorer):
+        with patch("runners.benchmark_runner.run_prompt", side_effect=fake_run_prompt):
+            with patch("runners.benchmark_runner.get_scorer", return_value=fake_scorer):
                 with patch(
                     "run_benchmark.write_raw_results", return_value="/fake/raw.jsonl"
                 ):
@@ -925,8 +924,8 @@ class TestMainFullRun:
         def fake_scorer(task, response):
             return _make_score_result(score=1.0, passed=True, reason="matched")
 
-        with patch("run_benchmark.run_prompt", side_effect=fake_run_prompt):
-            with patch("run_benchmark.get_scorer", return_value=fake_scorer):
+        with patch("runners.benchmark_runner.run_prompt", side_effect=fake_run_prompt):
+            with patch("runners.benchmark_runner.get_scorer", return_value=fake_scorer):
                 with patch(
                     "run_benchmark.write_raw_results", side_effect=OSError("disk full")
                 ):
@@ -969,8 +968,8 @@ class TestMainFullRun:
         def fake_scorer(task, response):
             return _make_score_result(score=1.0, passed=True, reason="matched")
 
-        with patch("run_benchmark.run_prompt", side_effect=fake_run_prompt):
-            with patch("run_benchmark.get_scorer", return_value=fake_scorer):
+        with patch("runners.benchmark_runner.run_prompt", side_effect=fake_run_prompt):
+            with patch("runners.benchmark_runner.get_scorer", return_value=fake_scorer):
                 with patch("run_benchmark.write_raw_results"):
                     with patch("run_benchmark.append_summary"):
                         with patch("run_benchmark.generate_leaderboard") as mock_lb:
@@ -1006,8 +1005,8 @@ class TestMainFullRun:
         def fake_scorer(task, response):
             return _make_score_result(score=1.0, passed=True, reason="matched")
 
-        with patch("run_benchmark.run_prompt", side_effect=fake_run_prompt):
-            with patch("run_benchmark.get_scorer", return_value=fake_scorer):
+        with patch("runners.benchmark_runner.run_prompt", side_effect=fake_run_prompt):
+            with patch("runners.benchmark_runner.get_scorer", return_value=fake_scorer):
                 with patch(
                     "run_benchmark.write_raw_results", return_value="/fake/raw.jsonl"
                 ):
@@ -1054,8 +1053,8 @@ class TestMainFullRun:
         def fake_scorer(task, response):
             return _make_score_result(score=1.0, passed=True, reason="matched")
 
-        with patch("run_benchmark.run_prompt", side_effect=fake_run_prompt):
-            with patch("run_benchmark.get_scorer", return_value=fake_scorer):
+        with patch("runners.benchmark_runner.run_prompt", side_effect=fake_run_prompt):
+            with patch("runners.benchmark_runner.get_scorer", return_value=fake_scorer):
                 with patch(
                     "run_benchmark.write_raw_results", return_value="/fake/raw.jsonl"
                 ):
@@ -1109,8 +1108,8 @@ class TestMainRepeats:
         def fake_scorer(task, response):
             return _make_score_result(score=1.0, passed=True, reason="matched")
 
-        with patch("run_benchmark.run_prompt", side_effect=fake_run_prompt):
-            with patch("run_benchmark.get_scorer", return_value=fake_scorer):
+        with patch("runners.benchmark_runner.run_prompt", side_effect=fake_run_prompt):
+            with patch("runners.benchmark_runner.get_scorer", return_value=fake_scorer):
                 with patch("run_benchmark.write_raw_results") as mock_write:
                     main()
                     # 2 tasks x 1 repeat = 2 results
@@ -1159,8 +1158,8 @@ class TestMainRepeats:
         def fake_scorer(task, response):
             return _make_score_result(score=1.0, passed=True, reason="matched")
 
-        with patch("run_benchmark.run_prompt", side_effect=fake_run_prompt):
-            with patch("run_benchmark.get_scorer", return_value=fake_scorer):
+        with patch("runners.benchmark_runner.run_prompt", side_effect=fake_run_prompt):
+            with patch("runners.benchmark_runner.get_scorer", return_value=fake_scorer):
                 with patch("run_benchmark.write_raw_results") as mock_write:
                     main()
                     # 2 tasks x 3 repeats = 6 results
@@ -1221,8 +1220,8 @@ class TestMainRepeats:
         def fake_scorer(task, response):
             return _make_score_result(score=1.0, passed=True, reason="matched")
 
-        with patch("run_benchmark.run_prompt", side_effect=fake_run_prompt):
-            with patch("run_benchmark.get_scorer", return_value=fake_scorer):
+        with patch("runners.benchmark_runner.run_prompt", side_effect=fake_run_prompt):
+            with patch("runners.benchmark_runner.get_scorer", return_value=fake_scorer):
                 with patch("run_benchmark.write_raw_results") as mock_write:
                     main()
                     written_results = mock_write.call_args[0][0]
@@ -1276,7 +1275,7 @@ class TestDryRunContract:
             ],
         )
 
-        with patch("run_benchmark.run_prompt") as mock_prompt:
+        with patch("runners.benchmark_runner.run_prompt") as mock_prompt:
             main()
             mock_prompt.assert_not_called()
 
