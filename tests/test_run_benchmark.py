@@ -812,3 +812,136 @@ class TestMainFullRun:
         captured = capsys.readouterr()
         err = captured.err
         assert "Error writing raw results" in err
+
+    def test_generate_leaderboard_is_called(self, monkeypatch, tmp_path):
+        """Verify that generate_leaderboard is invoked once."""
+        config_path = tmp_path / "config.yaml"
+        task_path = tmp_path / "tasks.jsonl"
+        _write_yaml(config_path, _make_config(config_id="full-cfg"))
+        _write_jsonl(
+            task_path,
+            [
+                _make_task("t-01", "Q1", "text", "a1"),
+            ],
+        )
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "run_benchmark.py",
+                "--config",
+                str(config_path),
+                "--task-file",
+                str(task_path),
+            ],
+        )
+
+        def fake_run_prompt(config, prompt):
+            return _make_model_result(response="answer", latency_sec=0.5)
+
+        def fake_scorer(task, response):
+            return _make_score_result(score=1.0, passed=True, reason="matched")
+
+        with patch("run_benchmark.run_prompt", side_effect=fake_run_prompt):
+            with patch("run_benchmark.get_scorer", return_value=fake_scorer):
+                with patch("run_benchmark.write_raw_results"):
+                    with patch("run_benchmark.append_summary"):
+                        with patch("run_benchmark.generate_leaderboard") as mock_lb:
+                            main()
+                            mock_lb.assert_called_once()
+
+    def test_leaderboard_path_is_printed(self, monkeypatch, tmp_path, capsys):
+        """Verify that the leaderboard path is printed to stdout."""
+        config_path = tmp_path / "config.yaml"
+        task_path = tmp_path / "tasks.jsonl"
+        _write_yaml(config_path, _make_config(config_id="full-cfg"))
+        _write_jsonl(
+            task_path,
+            [
+                _make_task("t-01", "Q1", "text", "a1"),
+            ],
+        )
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "run_benchmark.py",
+                "--config",
+                str(config_path),
+                "--task-file",
+                str(task_path),
+            ],
+        )
+
+        def fake_run_prompt(config, prompt):
+            return _make_model_result(response="answer", latency_sec=0.5)
+
+        def fake_scorer(task, response):
+            return _make_score_result(score=1.0, passed=True, reason="matched")
+
+        with patch("run_benchmark.run_prompt", side_effect=fake_run_prompt):
+            with patch("run_benchmark.get_scorer", return_value=fake_scorer):
+                with patch(
+                    "run_benchmark.write_raw_results", return_value="/fake/raw.jsonl"
+                ):
+                    with patch(
+                        "run_benchmark.append_summary", return_value="/fake/summary.csv"
+                    ):
+                        with patch(
+                            "run_benchmark.generate_leaderboard",
+                            return_value="/fake/leaderboard.md",
+                        ):
+                            main()
+
+        captured = capsys.readouterr()
+        out = captured.out
+        assert "Updated leaderboard at" in out
+        assert "/fake/leaderboard.md" in out
+
+    def test_generate_leaderboard_error_handling(self, monkeypatch, tmp_path, capsys):
+        """If generate_leaderboard raises OSError, an error is printed and benchmark continues."""
+        config_path = tmp_path / "config.yaml"
+        task_path = tmp_path / "tasks.jsonl"
+        _write_yaml(config_path, _make_config(config_id="err-cfg"))
+        _write_jsonl(
+            task_path,
+            [
+                _make_task("t-01", "Q1", "text", "a1"),
+            ],
+        )
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "run_benchmark.py",
+                "--config",
+                str(config_path),
+                "--task-file",
+                str(task_path),
+            ],
+        )
+
+        def fake_run_prompt(config, prompt):
+            return _make_model_result(response="answer", latency_sec=0.5)
+
+        def fake_scorer(task, response):
+            return _make_score_result(score=1.0, passed=True, reason="matched")
+
+        with patch("run_benchmark.run_prompt", side_effect=fake_run_prompt):
+            with patch("run_benchmark.get_scorer", return_value=fake_scorer):
+                with patch(
+                    "run_benchmark.write_raw_results", return_value="/fake/raw.jsonl"
+                ):
+                    with patch(
+                        "run_benchmark.append_summary", return_value="/fake/summary.csv"
+                    ):
+                        with patch(
+                            "run_benchmark.generate_leaderboard",
+                            side_effect=OSError("disk full"),
+                        ) as mock_lb:
+                            main()
+                            mock_lb.assert_called_once()
+
+        captured = capsys.readouterr()
+        err = captured.err
+        assert "Error writing leaderboard" in err

@@ -11,6 +11,7 @@ from typing import Any
 
 from runners.config_loader import load_config
 from runners.llama_client import run_prompt
+from runners.leaderboard import generate_leaderboard
 from runners.result_writer import append_summary, write_raw_results
 from runners.task_loader import load_tasks
 from scorers.registry import get_scorer
@@ -200,6 +201,12 @@ def main() -> None:
         print(f"Update summary at {summary_path}")
     except OSError as exc:
         print(f"Error writing summary: {exc}", file=sys.stderr)
+
+    try:
+        leaderboard_path = generate_leaderboard()
+        print(f"Updated leaderboard at {leaderboard_path}")
+    except OSError as exc:
+        print(f"Error writing leaderboard: {exc}", file=sys.stderr)
 
 
 if __name__ == "__main__":
