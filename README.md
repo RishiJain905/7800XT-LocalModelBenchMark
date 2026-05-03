@@ -119,6 +119,24 @@ Used for structured output or function-calling tasks.
 
 The `metadata.category` field determines which scorer is used. Custom mappings are defined in `CATEGORY_SCORER_MAP` inside `run_benchmark.py`.
 
+### Coding Benchmark Suites
+
+Coding suites are available through `benchmarks/suites.yaml`:
+
+```powershell
+python run_benchmark.py --config configs/qwen-9b-q8-4k.yaml --suite coding.frontend --dry-run
+python run_benchmark.py --config configs/qwen-9b-q8-4k.yaml --suite coding.backend --dry-run
+python run_benchmark.py --config configs/qwen-9b-q8-4k.yaml --suite coding.misc --dry-run
+```
+
+Phase 2 coding scores are lightweight keyword and structure checks. They are useful for quick smoke comparisons, but they are not a full coding judge. Full model responses are always preserved for manual inspection, and coding outputs are also saved as standalone artifacts under:
+
+```text
+results/runs/<model_id>/<run_id>/artifacts/<suite_id>/
+```
+
+Stronger coding evaluation with sandboxed tests or LLM-as-judge scoring is future work.
+
 ---
 
 ## Usage

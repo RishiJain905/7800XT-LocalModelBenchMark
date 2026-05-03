@@ -496,3 +496,38 @@ class TestTask11ReasoningSuites:
         for suite_id, suite in suites.items():
             tasks = load_tasks(suite["task_file"])
             assert len(tasks) == 20, f"{suite_id} should contain 20 tasks"
+
+
+class TestTask12CodingSuites:
+    """Acceptance coverage for Task 12 coding benchmark files."""
+
+    REQUIRED_CODING_SUITES = {
+        "coding.frontend",
+        "coding.backend",
+        "coding.misc",
+    }
+
+    def test_task12_coding_suites_load_with_ten_tasks_and_artifact_metadata(self):
+        clear_cache()
+        suites = {
+            suite["id"]: suite
+            for suite in list_suites()
+            if suite["id"] in self.REQUIRED_CODING_SUITES
+        }
+
+        assert set(suites) == self.REQUIRED_CODING_SUITES
+
+        for suite_id, suite in suites.items():
+            tasks = load_tasks(suite["task_file"])
+            assert len(tasks) == 10, f"{suite_id} should contain 10 tasks"
+
+            for task in tasks:
+                metadata = task.get("metadata", {})
+                assert metadata.get("category") == "code"
+                assert metadata.get("artifact_kind") in {
+                    "frontend",
+                    "backend",
+                    "misc",
+                }
+                assert metadata.get("artifact_extension")
+                assert metadata.get("keywords")

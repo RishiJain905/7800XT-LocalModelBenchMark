@@ -154,6 +154,49 @@ class TestRunBenchmarkNormal:
         assert results[1]["task_id"] == "t-02"
         assert results[1]["category"] == "math"
 
+    def test_coding_task_saves_artifact_and_links_path(self, tmp_path):
+        config = _make_config(config_id="cfg-code")
+        task = {
+            "id": "frontend_button_001",
+            "description": "Build an accessible React button.",
+            "expected_output": "React component with accessible button",
+            "metadata": {
+                "category": "code",
+                "artifact_kind": "frontend",
+                "artifact_extension": ".tsx",
+                "keywords": ["button", "aria", "disabled"],
+                "threshold": 0.6,
+            },
+        }
+        options = {
+            "repeats": 1,
+            "run_id": "run-code",
+            "run_dir": str(tmp_path),
+            "suite_id": "coding.frontend",
+        }
+        response = (
+            "export function Button() { return "
+            '<button aria-disabled="false" disabled={false}>Save</button>; }'
+        )
+
+        with patch("runners.benchmark_runner.run_prompt") as mock_run_prompt:
+            mock_run_prompt.return_value = _make_model_result(response, 0.5)
+
+            result = run_benchmark(config, [task], options)
+
+        artifact_path = (
+            tmp_path
+            / "artifacts"
+            / "coding.frontend"
+            / "frontend_button_001_response.tsx"
+        )
+        results = result["results"]
+
+        assert artifact_path.exists()
+        assert artifact_path.read_text(encoding="utf-8") == response
+        assert results[0]["artifact_paths"] == [str(artifact_path.resolve())]
+        assert results[0]["passed"] is True
+
     def test_error_handling_one_task_raises(self):
         """One task succeeds, one raises — verify error result fields and continued execution."""
         config = _make_config(config_id="cfg-err")
