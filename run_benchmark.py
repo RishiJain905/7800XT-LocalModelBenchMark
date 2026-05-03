@@ -8,11 +8,22 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import uuid
+from datetime import datetime
 from typing import Any
 
 from runners.config_loader import load_config
 from runners.leaderboard import generate_leaderboard
-from runners.result_writer import append_summary, write_raw_results
+from runners.result_writer import (
+    append_summary,
+    build_manifest,
+    create_run_folder,
+    update_manifest_status,
+    write_manifest,
+    write_raw_results,
+    write_run_raw_results,
+    write_run_summary,
+)
 from runners.task_loader import load_tasks
 from runners.suite_registry import get_suite
 from runners.benchmark_runner import run_benchmark
@@ -105,6 +116,9 @@ def main() -> None:
         "dry_run": args.dry_run,
         "task_file": task_file,
     }
+    if suite_info:
+        options["suite_id"] = suite_info["id"]
+        options["suite_name"] = suite_info.get("name", "")
 
     if args.dry_run:
         # Keep exact same dry-run output format
@@ -137,12 +151,34 @@ def main() -> None:
             f"latency={result['latency_sec']:.2f}s"
         )
 
-    summary = run_benchmark(
+    run_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + f"_{uuid.uuid4().hex[:8]}"
+    options["run_id"] = run_id
+    started_at = datetime.now().isoformat(timespec="seconds")
+    run_dir = create_run_folder(config["id"], run_id)
+    manifest = build_manifest(
         config,
-        tasks,
-        options,
-        result_callback=_print_result,
+        task_file,
+        run_id,
+        "running",
+        started_at,
+        suite_info=suite_info,
     )
+    write_manifest(run_dir, manifest)
+
+    try:
+        summary = run_benchmark(
+            config,
+            tasks,
+            options,
+            result_callback=_print_result,
+        )
+    except Exception:
+        update_manifest_status(
+            run_dir,
+            "failed",
+            datetime.now().isoformat(timespec="seconds"),
+        )
+        raise
 
     flat_results = summary["results"]
     run_id = summary["run_id"]
@@ -157,10 +193,32 @@ def main() -> None:
     print(f"Average latency: {summary['average_latency_sec']:.2f}s")
 
     try:
-        raw_path = write_raw_results(flat_results, config["id"], task_file, run_id)
+        raw_path = write_run_raw_results(run_dir, flat_results)
+        write_run_summary(
+            run_dir,
+            summary,
+            config,
+            task_file,
+            "completed",
+            repeats=args.repeats,
+            suite_info=suite_info,
+        )
+        update_manifest_status(
+            run_dir,
+            "completed",
+            datetime.now().isoformat(timespec="seconds"),
+        )
         print(f"Saved raw results to {raw_path}")
     except OSError as exc:
         print(f"Error writing raw results: {exc}", file=sys.stderr)
+
+    try:
+        write_raw_results(flat_results, config["id"], task_file, run_id)
+    except OSError as exc:
+        print(
+            f"Error writing raw results compatibility copy: {exc}",
+            file=sys.stderr,
+        )
 
     try:
         summary_path = append_summary(

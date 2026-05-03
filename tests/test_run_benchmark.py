@@ -699,6 +699,31 @@ class TestMainDryRun:
         assert 't-01: "What is 2+2?" -> numeric_close' in out
         assert 't-02: "Say hello" -> exact_match' in out
 
+    def test_dry_run_does_not_create_structured_run_folder(
+        self, monkeypatch, tmp_path
+    ):
+        config_path = tmp_path / "config.yaml"
+        task_path = tmp_path / "tasks.jsonl"
+        _write_yaml(config_path, _make_config(config_id="dry-run-cfg"))
+        _write_jsonl(task_path, [_make_task("t-01", "What is 2+2?", "math", "4")])
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "run_benchmark.py",
+                "--config",
+                str(config_path),
+                "--task-file",
+                str(task_path),
+                "--dry-run",
+            ],
+        )
+
+        main()
+
+        assert not (tmp_path / "results" / "runs").exists()
+
     def test_repo_sample_task_file_dry_run_loads(self, monkeypatch, capsys):
         """The documented sample task file should load in dry-run mode."""
         monkeypatch.setattr(
@@ -765,6 +790,86 @@ class TestMainFullRun:
         assert "Passed: 2" in out
         assert "Average score: 1.00" in out
         assert "Average latency: 0.50s" in out
+
+    def test_full_run_creates_structured_run_files(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        config_path = tmp_path / "config.yaml"
+        task_path = tmp_path / "tasks.jsonl"
+        _write_yaml(config_path, _make_config(config_id="full-cfg"))
+        _write_jsonl(task_path, [_make_task("t-01", "Q1", "text", "a1")])
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "run_benchmark.py",
+                "--config",
+                str(config_path),
+                "--task-file",
+                str(task_path),
+            ],
+        )
+
+        def fake_run_prompt(config, prompt):
+            return _make_model_result(response="answer", latency_sec=0.5)
+
+        def fake_scorer(task, response):
+            return _make_score_result(score=1.0, passed=True, reason="matched")
+
+        with patch("runners.benchmark_runner.run_prompt", side_effect=fake_run_prompt):
+            with patch("runners.benchmark_runner.get_scorer", return_value=fake_scorer):
+                main()
+
+        run_root = tmp_path / "results" / "runs" / "full-cfg"
+        run_dirs = list(run_root.iterdir())
+        assert len(run_dirs) == 1
+        run_dir = run_dirs[0]
+        manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+        raw_lines = (run_dir / "raw.jsonl").read_text(encoding="utf-8").splitlines()
+        summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+
+        assert (run_dir / "artifacts").is_dir()
+        assert manifest["status"] == "completed"
+        assert manifest["model_config_id"] == "full-cfg"
+        assert manifest["completed_at"] is not None
+        assert len(raw_lines) == 1
+        assert json.loads(raw_lines[0])["task_id"] == "t-01"
+        assert summary["run_id"] == manifest["run_id"]
+        assert summary["pass_rate"] == 1.0
+
+        out = capsys.readouterr().out
+        assert str(run_dir / "raw.jsonl") in out
+
+    def test_top_level_run_failure_marks_manifest_failed(
+        self, monkeypatch, tmp_path
+    ):
+        config_path = tmp_path / "config.yaml"
+        task_path = tmp_path / "tasks.jsonl"
+        _write_yaml(config_path, _make_config(config_id="fail-cfg"))
+        _write_jsonl(task_path, [_make_task("t-01", "Q1", "text", "a1")])
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "run_benchmark.py",
+                "--config",
+                str(config_path),
+                "--task-file",
+                str(task_path),
+            ],
+        )
+
+        with patch("run_benchmark.run_benchmark", side_effect=RuntimeError("boom")):
+            with pytest.raises(RuntimeError, match="boom"):
+                main()
+
+        run_root = tmp_path / "results" / "runs" / "fail-cfg"
+        run_dir = next(run_root.iterdir())
+        manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+        assert manifest["status"] == "failed"
+        assert manifest["completed_at"] is not None
 
     def test_error_handling_continues_to_next_task(self, monkeypatch, tmp_path, capsys):
         config_path = tmp_path / "config.yaml"

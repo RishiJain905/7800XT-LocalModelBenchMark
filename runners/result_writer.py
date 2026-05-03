@@ -7,6 +7,134 @@ import json
 from pathlib import Path
 from statistics import mean
 
+VALID_RUN_STATUSES = {"running", "completed", "cancelled", "failed"}
+
+
+def create_run_folder(model_config_id: str, run_id: str) -> Path:
+    """Create the structured per-run folder and placeholder files."""
+    run_dir = Path("results") / "runs" / model_config_id / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "artifacts").mkdir(exist_ok=True)
+    (run_dir / "manifest.json").touch(exist_ok=True)
+    (run_dir / "raw.jsonl").touch(exist_ok=True)
+    (run_dir / "summary.json").touch(exist_ok=True)
+    return run_dir.resolve()
+
+
+def build_manifest(
+    config: dict,
+    task_file: str,
+    run_id: str,
+    status: str,
+    started_at: str,
+    completed_at: str | None = None,
+    suite_info: dict | None = None,
+) -> dict:
+    """Build the manifest payload for a structured benchmark run."""
+    _validate_run_status(status)
+
+    manifest = {
+        "run_id": run_id,
+        "model_config_id": config["id"],
+        "model_name": config.get("model_name", ""),
+        "task_file": task_file,
+        "server_url": config.get("runtime", {}).get("server_url", ""),
+        "settings": config.get("settings", {}),
+        "status": status,
+        "started_at": started_at,
+        "completed_at": completed_at,
+    }
+
+    if suite_info:
+        manifest["suite_id"] = suite_info.get("id", "")
+        manifest["suite_name"] = suite_info.get("name", "")
+
+    return manifest
+
+
+def write_manifest(run_dir: str | Path, manifest: dict) -> str:
+    """Write a run manifest as pretty JSON."""
+    path = Path(run_dir) / "manifest.json"
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump(manifest, fh, indent=2, default=str)
+        fh.write("\n")
+    return str(path.resolve())
+
+
+def update_manifest_status(
+    run_dir: str | Path,
+    status: str,
+    completed_at: str | None = None,
+) -> str:
+    """Update the status fields in an existing manifest."""
+    _validate_run_status(status)
+    path = Path(run_dir) / "manifest.json"
+    with path.open("r", encoding="utf-8") as fh:
+        manifest = json.load(fh)
+
+    manifest["status"] = status
+    if completed_at is not None:
+        manifest["completed_at"] = completed_at
+
+    return write_manifest(run_dir, manifest)
+
+
+def write_run_raw_results(run_dir: str | Path, results: list[dict]) -> str:
+    """Write structured raw results to ``raw.jsonl`` inside a run folder."""
+    path = Path(run_dir) / "raw.jsonl"
+    with path.open("w", encoding="utf-8") as fh:
+        for result in results:
+            fh.write(json.dumps(result, default=str) + "\n")
+    return str(path.resolve())
+
+
+def write_run_summary(
+    run_dir: str | Path,
+    summary: dict,
+    config: dict,
+    task_file: str,
+    status: str,
+    repeats: int = 1,
+    suite_info: dict | None = None,
+) -> str:
+    """Write aggregate run metadata to ``summary.json`` inside a run folder."""
+    _validate_run_status(status)
+    total_attempts = summary.get("total_attempts", 0)
+    passed = summary.get("passed", 0)
+    payload = {
+        "run_id": summary["run_id"],
+        "model_config_id": config["id"],
+        "model_name": config.get("model_name", ""),
+        "task_file": task_file,
+        "run_folder": str(Path(run_dir).resolve()),
+        "status": status,
+        "total_tasks": summary.get("total_tasks", 0),
+        "total_attempts": total_attempts,
+        "passed": passed,
+        "failed": summary.get("failed", total_attempts - passed),
+        "pass_rate": passed / total_attempts if total_attempts else 0.0,
+        "average_score": summary.get("average_score", 0.0),
+        "average_latency_sec": summary.get("average_latency_sec", 0.0),
+        "repeats": repeats,
+    }
+
+    if suite_info:
+        payload["suite_id"] = suite_info.get("id", "")
+        payload["suite_name"] = suite_info.get("name", "")
+
+    path = Path(run_dir) / "summary.json"
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump(payload, fh, indent=2, default=str)
+        fh.write("\n")
+    return str(path.resolve())
+
+
+def _validate_run_status(status: str) -> None:
+    """Validate run manifest status values."""
+    if status not in VALID_RUN_STATUSES:
+        allowed = ", ".join(sorted(VALID_RUN_STATUSES))
+        raise ValueError(f"Invalid run status '{status}'. Expected one of: {allowed}.")
+
 
 def write_raw_results(
     results: list[dict],
