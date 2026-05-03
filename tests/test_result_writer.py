@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from runners.result_writer import (
+    append_run_raw_result,
     build_manifest,
     create_run_folder,
     sanitize_filename,
@@ -136,6 +137,38 @@ def test_raw_results_and_summary_are_written(monkeypatch, tmp_path):
     assert data["pass_rate"] == 0.5
     assert data["average_latency_sec"] == 1.0
     assert data["repeats"] == 1
+
+
+def test_append_run_raw_result_appends_readable_jsonl(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    run_dir = create_run_folder("model-1", "run-1")
+
+    first_path = append_run_raw_result(run_dir, {"task_id": "t1", "score": 1.0})
+    second_path = append_run_raw_result(run_dir, {"task_id": "t2", "score": 0.0})
+
+    assert first_path == str((run_dir / "raw.jsonl").resolve())
+    assert second_path == first_path
+
+    lines = (run_dir / "raw.jsonl").read_text(encoding="utf-8").splitlines()
+    assert [json.loads(line)["task_id"] for line in lines] == ["t1", "t2"]
+
+
+def test_append_run_raw_result_flushes_and_fsyncs(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    run_dir = create_run_folder("model-1", "run-1")
+    fsync_calls: list[int] = []
+
+    def fake_fsync(fd: int) -> None:
+        fsync_calls.append(fd)
+
+    monkeypatch.setattr("runners.result_writer.os.fsync", fake_fsync)
+
+    append_run_raw_result(run_dir, {"task_id": "t1"})
+
+    assert len(fsync_calls) == 1
+    assert json.loads((run_dir / "raw.jsonl").read_text(encoding="utf-8")) == {
+        "task_id": "t1"
+    }
 
 
 def test_sanitize_filename():

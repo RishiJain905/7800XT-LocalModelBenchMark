@@ -33,6 +33,10 @@ CATEGORY_SCORER_MAP: dict[str, str] = {
 _FALLBACK_SCORER = "exact_match"
 
 
+class BenchmarkCancelled(Exception):
+    """Raised when a benchmark run is explicitly cancelled."""
+
+
 def _resolve_scorer(task: dict[str, Any]) -> str:
     """Map a task's category to the appropriate scorer name."""
     category: str = task.get("metadata", {}).get("category", "")
@@ -109,6 +113,7 @@ def run_benchmark(
     options: dict[str, Any],
     progress_callback: Callable[[int, int], None] | None = None,
     result_callback: Callable[[dict[str, Any]], None] | None = None,
+    cancel_callback: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
     """Run a benchmark across the given tasks with the supplied config.
 
@@ -167,6 +172,9 @@ def run_benchmark(
     for task in tasks:
         scorer_name = _resolve_scorer(task)
         for repeat_idx in range(repeats):
+            if cancel_callback and cancel_callback():
+                raise BenchmarkCancelled("Benchmark run was cancelled.")
+
             prompt: str = task["description"]
             try:
                 model_result = run_prompt(config, prompt)
@@ -175,6 +183,8 @@ def run_benchmark(
                 result = _build_result(
                     task, config, model_result, score_result, task_file, run_id
                 )
+            except (KeyboardInterrupt, BenchmarkCancelled):
+                raise
             except Exception as exc:
                 result = _build_error_result(task, config, str(exc), task_file, run_id)
 

@@ -871,6 +871,78 @@ class TestMainFullRun:
         assert manifest["status"] == "failed"
         assert manifest["completed_at"] is not None
 
+    def test_keyboard_interrupt_preserves_completed_attempts_as_cancelled(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        config_path = tmp_path / "config.yaml"
+        task_path = tmp_path / "tasks.jsonl"
+        _write_yaml(config_path, _make_config(config_id="cancel-cfg"))
+        _write_jsonl(
+            task_path,
+            [
+                _make_task("t-01", "Q1", "text", "a1"),
+                _make_task("t-02", "Q2", "text", "a2"),
+            ],
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "run_benchmark.py",
+                "--config",
+                str(config_path),
+                "--task-file",
+                str(task_path),
+            ],
+        )
+
+        call_count = 0
+
+        def fake_run_prompt(config, prompt):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 2:
+                raise KeyboardInterrupt
+            return _make_model_result(response="answer", latency_sec=0.5)
+
+        def fake_scorer(task, response):
+            return _make_score_result(score=1.0, passed=True, reason="matched")
+
+        with patch("runners.benchmark_runner.run_prompt", side_effect=fake_run_prompt):
+            with patch("runners.benchmark_runner.get_scorer", return_value=fake_scorer):
+                with patch("run_benchmark.write_raw_results") as mock_raw_copy:
+                    with patch("run_benchmark.append_summary") as mock_append_summary:
+                        with patch("run_benchmark.generate_leaderboard") as mock_lb:
+                            with pytest.raises(SystemExit) as exc_info:
+                                main()
+
+        assert exc_info.value.code == 130
+        mock_raw_copy.assert_not_called()
+        mock_append_summary.assert_not_called()
+        mock_lb.assert_not_called()
+
+        run_root = tmp_path / "results" / "runs" / "cancel-cfg"
+        run_dir = next(run_root.iterdir())
+        manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+        raw_lines = (run_dir / "raw.jsonl").read_text(encoding="utf-8").splitlines()
+        summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+
+        assert manifest["status"] == "cancelled"
+        assert manifest["completed_at"] is not None
+        assert len(raw_lines) == 1
+        assert json.loads(raw_lines[0])["task_id"] == "t-01"
+        assert summary["status"] == "cancelled"
+        assert summary["total_tasks"] == 2
+        assert summary["total_attempts"] == 2
+        assert summary["passed"] == 1
+        assert summary["failed"] == 0
+        assert summary["pass_rate"] == 0.5
+
+        out = capsys.readouterr().out
+        assert "Run cancelled" in out
+        assert str(run_dir / "raw.jsonl") in out
+
     def test_error_handling_continues_to_next_task(self, monkeypatch, tmp_path, capsys):
         config_path = tmp_path / "config.yaml"
         task_path = tmp_path / "tasks.jsonl"

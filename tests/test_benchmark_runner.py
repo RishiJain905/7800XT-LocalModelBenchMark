@@ -12,6 +12,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from runners.benchmark_runner import (
+    BenchmarkCancelled,
     CATEGORY_SCORER_MAP,
     _FALLBACK_SCORER,
     _build_error_result,
@@ -396,6 +397,37 @@ class TestRunBenchmarkCallbacks:
         assert result["passed"] == 1
         assert result["failed"] == 0
         assert len(result["results"]) == 1
+
+    def test_cancel_callback_stops_before_next_attempt(self):
+        config = _make_config()
+        tasks = [
+            _make_task("t-01", "Q1", "text", "a1"),
+            _make_task("t-02", "Q2", "text", "a2"),
+        ]
+        options = {"repeats": 1, "run_id": "run-cancel"}
+        completed: list[dict] = []
+
+        def cancel_callback() -> bool:
+            return len(completed) == 1
+
+        with patch("runners.benchmark_runner.run_prompt") as mock_run_prompt:
+            mock_run_prompt.return_value = _make_model_result("answer", 0.5)
+            with patch("runners.benchmark_runner.get_scorer") as mock_get_scorer:
+                mock_get_scorer.return_value = (
+                    lambda task, response: _make_score_result(1.0, True, "ok")
+                )
+
+                with pytest.raises(BenchmarkCancelled):
+                    run_benchmark(
+                        config,
+                        tasks,
+                        options,
+                        result_callback=completed.append,
+                        cancel_callback=cancel_callback,
+                    )
+
+        assert [result["task_id"] for result in completed] == ["t-01"]
+        assert mock_run_prompt.call_count == 1
 
 
 # ---------------------------------------------------------------------------

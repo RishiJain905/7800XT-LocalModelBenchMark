@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import re
 from pathlib import Path
 from statistics import mean
@@ -86,6 +87,16 @@ def write_run_raw_results(run_dir: str | Path, results: list[dict]) -> str:
     with path.open("w", encoding="utf-8") as fh:
         for result in results:
             fh.write(json.dumps(result, default=str) + "\n")
+    return str(path.resolve())
+
+
+def append_run_raw_result(run_dir: str | Path, result: dict) -> str:
+    """Append one completed attempt to ``raw.jsonl`` and force it to disk."""
+    path = Path(run_dir) / "raw.jsonl"
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(result, default=str) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
     return str(path.resolve())
 
 

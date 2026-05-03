@@ -15,6 +15,7 @@ from typing import Any
 from runners.config_loader import load_config
 from runners.leaderboard import generate_leaderboard
 from runners.result_writer import (
+    append_run_raw_result,
     append_summary,
     build_manifest,
     create_run_folder,
@@ -26,7 +27,37 @@ from runners.result_writer import (
 )
 from runners.task_loader import load_tasks
 from runners.suite_registry import get_suite
-from runners.benchmark_runner import run_benchmark
+from runners.benchmark_runner import BenchmarkCancelled, run_benchmark
+
+
+def _build_summary_from_results(
+    results: list[dict[str, Any]],
+    run_id: str,
+    total_tasks: int,
+    total_attempts: int,
+) -> dict[str, Any]:
+    """Build an aggregate summary from completed attempts."""
+    completed_attempts = len(results)
+    passed = sum(1 for result in results if result["passed"])
+    failed = completed_attempts - passed
+    return {
+        "results": results,
+        "run_id": run_id,
+        "total_tasks": total_tasks,
+        "total_attempts": total_attempts,
+        "passed": passed,
+        "failed": failed,
+        "average_score": (
+            sum(result["score"] for result in results) / completed_attempts
+            if completed_attempts
+            else 0.0
+        ),
+        "average_latency_sec": (
+            sum(result["latency_sec"] for result in results) / completed_attempts
+            if completed_attempts
+            else 0.0
+        ),
+    }
 
 
 def _resolve_config_path(config_arg: str) -> str:
@@ -140,10 +171,13 @@ def main() -> None:
 
     total_attempts = len(tasks) * args.repeats
     _counter_state = [1]
+    completed_results: list[dict[str, Any]] = []
 
-    def _print_result(result: dict[str, Any]) -> None:
+    def _record_result(result: dict[str, Any]) -> None:
         idx = _counter_state[0]
         _counter_state[0] += 1
+        completed_results.append(result)
+        append_run_raw_result(run_dir, result)
         print(
             f"[{idx}/{total_attempts}] {result['task_id']}"
             f" (repeat {result['repeat_index'] + 1}/{args.repeats})  "
@@ -172,9 +206,54 @@ def main() -> None:
             config,
             tasks,
             options,
-            result_callback=_print_result,
+            result_callback=_record_result,
         )
+    except (KeyboardInterrupt, BenchmarkCancelled):
+        completed_at = datetime.now().isoformat(timespec="seconds")
+        partial_summary = _build_summary_from_results(
+            completed_results,
+            run_id,
+            len(tasks),
+            total_attempts,
+        )
+        try:
+            write_run_summary(
+                run_dir,
+                partial_summary,
+                config,
+                task_file,
+                "cancelled",
+                repeats=args.repeats,
+                suite_info=suite_info,
+            )
+            update_manifest_status(run_dir, "cancelled", completed_at)
+        except OSError as exc:
+            print(f"Error writing cancelled run metadata: {exc}", file=sys.stderr)
+
+        print()
+        print("Run cancelled. Completed attempts were preserved.")
+        print(f"Run folder: {run_dir}")
+        print(f"Saved raw results to {run_dir / 'raw.jsonl'}")
+        sys.exit(130)
     except Exception:
+        partial_summary = _build_summary_from_results(
+            completed_results,
+            run_id,
+            len(tasks),
+            total_attempts,
+        )
+        try:
+            write_run_summary(
+                run_dir,
+                partial_summary,
+                config,
+                task_file,
+                "failed",
+                repeats=args.repeats,
+                suite_info=suite_info,
+            )
+        except OSError as exc:
+            print(f"Error writing failed run summary: {exc}", file=sys.stderr)
         update_manifest_status(
             run_dir,
             "failed",
