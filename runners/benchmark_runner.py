@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Any, Callable
 
 from runners.llama_client import run_prompt
+from runners.result_writer import save_artifact
 from scorers.registry import get_scorer
 
 
@@ -72,6 +73,7 @@ def _build_result(
         "passed": score_result["passed"],
         "reason": score_result["reason"],
         "settings": _extract_settings(config),
+        "artifact_paths": [],
     }
 
 
@@ -97,6 +99,7 @@ def _build_error_result(
         "passed": False,
         "reason": str(error),
         "settings": _extract_settings(config),
+        "artifact_paths": [],
     }
 
 
@@ -174,6 +177,19 @@ def run_benchmark(
                 )
             except Exception as exc:
                 result = _build_error_result(task, config, str(exc), task_file, run_id)
+
+            # Save coding artifact if applicable
+            if task.get("metadata", {}).get("category") == "code":
+                run_dir = options.get("run_dir")
+                if run_dir is not None:
+                    suite_id = options.get("suite_id", "")
+                    response_text = result.get("response", "")
+                    if response_text:
+                        artifact_path = save_artifact(
+                            run_dir, suite_id, task, response_text
+                        )
+                        result["artifact_paths"].append(artifact_path)
+
             result["repeat_index"] = repeat_idx
             result["repeat_count"] = repeats
             results.append(result)

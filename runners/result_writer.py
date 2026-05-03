@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 from pathlib import Path
 from statistics import mean
 
@@ -286,3 +287,36 @@ def append_summary(
         )
 
     return str(summary_path.resolve())
+
+
+def sanitize_filename(name: str) -> str:
+    """Replace any character that is NOT alphanumeric, hyphen, underscore, or period with an underscore."""
+    return re.sub(r"[^a-zA-Z0-9\-_.]", "_", name)
+
+
+def save_artifact(run_dir: str | Path, suite_id: str, task: dict, response: str) -> str:
+    """Save a model-generated coding artifact to disk.
+
+    Args:
+        run_dir: The run directory (contains an ``artifacts/`` subfolder).
+        suite_id: Suite identifier (e.g. ``"coding.frontend"``).
+        task: Task dictionary (must contain ``"id"`` and may contain
+            ``metadata.artifact_extension``).
+        response: The model response text to write.
+
+    Returns:
+        Absolute path (as a string) to the written artifact file.
+    """
+    run_dir = Path(run_dir)
+    task_id = task["id"]
+    sanitized_id = sanitize_filename(task_id)
+    extension = task.get("metadata", {}).get("artifact_extension", ".md")
+
+    artifacts_dir = run_dir / "artifacts" / suite_id
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    file_path = artifacts_dir / f"{sanitized_id}_response{extension}"
+    with file_path.open("w", encoding="utf-8") as fh:
+        fh.write(response)
+
+    return str(file_path.resolve())

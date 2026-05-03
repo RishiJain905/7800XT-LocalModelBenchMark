@@ -155,6 +155,8 @@ def main() -> None:
     options["run_id"] = run_id
     started_at = datetime.now().isoformat(timespec="seconds")
     run_dir = create_run_folder(config["id"], run_id)
+    options["run_dir"] = str(run_dir)
+
     manifest = build_manifest(
         config,
         task_file,

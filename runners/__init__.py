@@ -3,7 +3,12 @@
 from .task_loader import load_tasks
 from .validators import ValidationError, validate_task, validate_field
 from .leaderboard import generate_leaderboard
-from .result_writer import write_raw_results, append_summary
+from .result_writer import (
+    write_raw_results,
+    append_summary,
+    save_artifact,
+    sanitize_filename,
+)
 from .suite_registry import list_suites, get_suite, clear_cache
 from .model_registry import list_model_configs, get_model_config
 from .server_health import check_server
@@ -16,6 +21,8 @@ __all__ = [
     "validate_field",
     "write_raw_results",
     "append_summary",
+    "save_artifact",
+    "sanitize_filename",
     "generate_leaderboard",
     "list_suites",
     "get_suite",

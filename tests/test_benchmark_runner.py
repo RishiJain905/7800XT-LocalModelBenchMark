@@ -134,6 +134,7 @@ class TestRunBenchmarkNormal:
             "settings",
             "repeat_index",
             "repeat_count",
+            "artifact_paths",
         }
 
         for r in results:

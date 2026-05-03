@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
 from runners.result_writer import (
     build_manifest,
     create_run_folder,
+    sanitize_filename,
+    save_artifact,
     update_manifest_status,
     write_manifest,
     write_run_raw_results,
@@ -133,3 +136,64 @@ def test_raw_results_and_summary_are_written(monkeypatch, tmp_path):
     assert data["pass_rate"] == 0.5
     assert data["average_latency_sec"] == 1.0
     assert data["repeats"] == 1
+
+
+def test_sanitize_filename():
+    assert sanitize_filename("hello_world") == "hello_world"
+    assert sanitize_filename("hello world!") == "hello_world_"
+    assert sanitize_filename("a/b/c") == "a_b_c"
+    assert sanitize_filename("valid-name.ext") == "valid-name.ext"
+
+
+def test_save_artifact_default_extension(tmp_path):
+    task = {"id": "my_task", "metadata": {"category": "code"}}
+    response = "console.log('hello');"
+
+    path = save_artifact(tmp_path, "coding.frontend", task, response)
+
+    expected_file = tmp_path / "artifacts" / "coding.frontend" / "my_task_response.md"
+    assert expected_file.exists()
+    assert expected_file.read_text(encoding="utf-8") == response
+    assert path == str(expected_file.resolve())
+
+
+def test_save_artifact_custom_extension(tmp_path):
+    task = {
+        "id": "api_handler_001",
+        "metadata": {"category": "code", "artifact_extension": ".py"},
+    }
+    response = "def handler(): pass"
+
+    path = save_artifact(tmp_path, "coding.backend", task, response)
+
+    expected_file = (
+        tmp_path / "artifacts" / "coding.backend" / "api_handler_001_response.py"
+    )
+    assert expected_file.exists()
+    assert expected_file.read_text(encoding="utf-8") == response
+    assert path == str(expected_file.resolve())
+
+
+def test_save_artifact_returns_absolute_path(tmp_path):
+    task = {"id": "abs_task", "metadata": {"category": "code"}}
+    response = "print('hello')"
+
+    path = save_artifact(tmp_path, "suite.a", task, response)
+
+    assert isinstance(path, str)
+    assert Path(path).is_absolute()
+    assert Path(path).exists()
+
+
+def test_save_artifact_with_special_chars_in_id(tmp_path):
+    task = {"id": "my task/123!", "metadata": {"category": "code"}}
+    response = "some code"
+
+    path = save_artifact(tmp_path, "suite.b", task, response)
+
+    expected_file = tmp_path / "artifacts" / "suite.b" / "my_task_123__response.md"
+    assert expected_file.exists()
+    assert "/" not in expected_file.name
+    assert "!" not in expected_file.name
+    assert " " not in expected_file.name
+    assert path == str(expected_file.resolve())
