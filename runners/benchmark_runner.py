@@ -146,12 +146,17 @@ def run_benchmark(
     repeats: int = options.get("repeats", 1)
     dry_run: bool = options.get("dry_run", False)
     task_file: str = options.get("task_file", "")
+    skip_attempts: set[tuple[str, int]] = set(options.get("skip_attempts") or set())
     run_id: str = options.get("run_id") or (
         datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + f"_{uuid.uuid4().hex[:8]}"
     )
 
     total_tasks = len(tasks)
     total_attempts = total_tasks * repeats
+    scheduled_attempts = {
+        (task["id"], repeat_idx) for task in tasks for repeat_idx in range(repeats)
+    }
+    completed_count = len(skip_attempts & scheduled_attempts)
 
     if dry_run:
         if progress_callback:
@@ -172,6 +177,9 @@ def run_benchmark(
     for task in tasks:
         scorer_name = _resolve_scorer(task)
         for repeat_idx in range(repeats):
+            if (task["id"], repeat_idx) in skip_attempts:
+                continue
+
             if cancel_callback and cancel_callback():
                 raise BenchmarkCancelled("Benchmark run was cancelled.")
 
@@ -205,7 +213,7 @@ def run_benchmark(
             results.append(result)
 
             if progress_callback:
-                progress_callback(len(results), total_attempts)
+                progress_callback(completed_count + len(results), total_attempts)
             if result_callback:
                 result_callback(result)
 

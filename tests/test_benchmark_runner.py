@@ -429,6 +429,45 @@ class TestRunBenchmarkCallbacks:
         assert [result["task_id"] for result in completed] == ["t-01"]
         assert mock_run_prompt.call_count == 1
 
+    def test_skip_attempts_prevents_repeating_completed_work(self):
+        config = _make_config()
+        tasks = [
+            _make_task("t-01", "Q1", "text", "a1"),
+            _make_task("t-02", "Q2", "text", "a2"),
+        ]
+        options = {
+            "repeats": 2,
+            "run_id": "run-resume",
+            "skip_attempts": {("t-01", 0), ("t-02", 1)},
+        }
+        progress_calls: list[tuple[int, int]] = []
+
+        def progress_callback(completed: int, total: int) -> None:
+            progress_calls.append((completed, total))
+
+        with patch("runners.benchmark_runner.run_prompt") as mock_run_prompt:
+            mock_run_prompt.return_value = _make_model_result("answer", 0.5)
+            with patch("runners.benchmark_runner.get_scorer") as mock_get_scorer:
+                mock_get_scorer.return_value = (
+                    lambda task, response: _make_score_result(1.0, True, "ok")
+                )
+
+                result = run_benchmark(
+                    config,
+                    tasks,
+                    options,
+                    progress_callback=progress_callback,
+                )
+
+        assert mock_run_prompt.call_count == 2
+        assert [(r["task_id"], r["repeat_index"]) for r in result["results"]] == [
+            ("t-01", 1),
+            ("t-02", 0),
+        ]
+        assert result["total_attempts"] == 4
+        assert result["passed"] == 2
+        assert progress_calls == [(3, 4), (4, 4)]
+
 
 # ---------------------------------------------------------------------------
 # E. Runner-specific helpers

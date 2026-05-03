@@ -1534,3 +1534,138 @@ class TestSummaryCsvColumnsContract:
         # Basic sanity that values are present in the leaderboard
         assert "0.75" in content  # average_score
         assert "50.0%" in content  # pass rate (1 passed / 2 total)
+
+
+class TestResumeCli:
+    """Batch CLI resume behavior."""
+
+    def _make_resume_run(
+        self,
+        tmp_path,
+        status: str = "cancelled",
+        repeats: int = 1,
+        raw_rows: list[dict] | None = None,
+    ):
+        task_path = tmp_path / "tasks.jsonl"
+        _write_jsonl(
+            task_path,
+            [
+                _make_task("t-01", "Q1", "text", "a1"),
+                _make_task("t-02", "Q2", "text", "a2"),
+            ],
+        )
+        run_dir = tmp_path / "results" / "runs" / "resume-cfg" / "run-1"
+        run_dir.mkdir(parents=True)
+        manifest = {
+            "run_id": "run-1",
+            "model_config_id": "resume-cfg",
+            "model_name": "Resume Model",
+            "task_file": str(task_path),
+            "server_url": "http://127.0.0.1:8080/v1/chat/completions",
+            "settings": {"temperature": 0, "top_p": 1, "max_tokens": 128},
+            "status": status,
+            "started_at": "2026-05-03T12:00:00",
+            "completed_at": None,
+            "repeats": repeats,
+        }
+        (run_dir / "manifest.json").write_text(
+            json.dumps(manifest), encoding="utf-8"
+        )
+        raw_path = run_dir / "raw.jsonl"
+        if raw_rows is None:
+            raw_rows = [
+                {
+                    "run_id": "run-1",
+                    "model_config_id": "resume-cfg",
+                    "task_file": str(task_path),
+                    "task_id": "t-01",
+                    "category": "text",
+                    "prompt": "Q1",
+                    "expected": "a1",
+                    "response": "answer",
+                    "latency_sec": 0.5,
+                    "score": 1.0,
+                    "passed": True,
+                    "reason": "ok",
+                    "settings": {},
+                    "artifact_paths": [],
+                    "repeat_index": 0,
+                    "repeat_count": repeats,
+                }
+            ]
+        _write_jsonl(raw_path, raw_rows)
+        return run_dir
+
+    def test_resume_continues_missing_attempts_without_repeating_completed(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        monkeypatch.chdir(tmp_path)
+        run_dir = self._make_resume_run(tmp_path)
+        monkeypatch.setattr(sys, "argv", ["run_benchmark.py", "--resume", str(run_dir)])
+
+        prompts: list[str] = []
+
+        def fake_run_prompt(config, prompt):
+            prompts.append(prompt)
+            return _make_model_result(response="answer", latency_sec=0.5)
+
+        def fake_scorer(task, response):
+            return _make_score_result(score=1.0, passed=True, reason="matched")
+
+        with patch("runners.benchmark_runner.run_prompt", side_effect=fake_run_prompt):
+            with patch("runners.benchmark_runner.get_scorer", return_value=fake_scorer):
+                with patch("run_benchmark.generate_leaderboard") as mock_lb:
+                    main()
+
+        assert prompts == ["Q2"]
+        lines = (run_dir / "raw.jsonl").read_text(encoding="utf-8").splitlines()
+        assert len(lines) == 2
+        rows = [json.loads(line) for line in lines]
+        assert [(row["task_id"], row["repeat_index"]) for row in rows] == [
+            ("t-01", 0),
+            ("t-02", 0),
+        ]
+        manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+        assert manifest["status"] == "completed"
+        summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+        assert summary["total_attempts"] == 2
+        assert summary["passed"] == 2
+        assert (tmp_path / "results" / "summary.csv").exists()
+        mock_lb.assert_called_once()
+
+        out = capsys.readouterr().out
+        assert "Resuming run:" in out
+        assert "Completed attempts found: 1/2" in out
+        assert "Missing attempts to run: 1" in out
+        assert "[2/2] t-02 (repeat 1/1)" in out
+
+    def test_resume_rejects_completed_runs(self, monkeypatch, tmp_path, capsys):
+        run_dir = self._make_resume_run(tmp_path, status="completed")
+        monkeypatch.setattr(sys, "argv", ["run_benchmark.py", "--resume", str(run_dir)])
+
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+
+        assert exc_info.value.code == 1
+        assert "already completed" in capsys.readouterr().err
+
+    def test_resume_warns_about_corrupted_raw_lines(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        monkeypatch.chdir(tmp_path)
+        run_dir = self._make_resume_run(tmp_path)
+        with (run_dir / "raw.jsonl").open("a", encoding="utf-8") as fh:
+            fh.write("{bad json\n")
+        monkeypatch.setattr(sys, "argv", ["run_benchmark.py", "--resume", str(run_dir)])
+
+        def fake_run_prompt(config, prompt):
+            return _make_model_result(response="answer", latency_sec=0.5)
+
+        def fake_scorer(task, response):
+            return _make_score_result(score=1.0, passed=True, reason="matched")
+
+        with patch("runners.benchmark_runner.run_prompt", side_effect=fake_run_prompt):
+            with patch("runners.benchmark_runner.get_scorer", return_value=fake_scorer):
+                main()
+
+        assert "WARNING: raw.jsonl line 2" in capsys.readouterr().err
