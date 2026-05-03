@@ -16,6 +16,7 @@ from runners.suite_registry import (
     clear_cache,
     _REQUIRED_SUITE_FIELDS,
 )
+from runners.task_loader import load_tasks
 
 
 # ---------------------------------------------------------------------------
@@ -435,6 +436,7 @@ class TestRunBenchmarkIntegration:
         finally:
             os.chdir(cwd)
 
+
     def test_mutually_exclusive(self, setup_suite_env, monkeypatch):
         """Using both --suite and --task-file should fail."""
         cwd = os.getcwd()
@@ -470,3 +472,27 @@ class TestRunBenchmarkIntegration:
                 main()
         finally:
             os.chdir(cwd)
+
+
+class TestTask11ReasoningSuites:
+    """Acceptance coverage for Task 11 core reasoning benchmark files."""
+
+    REQUIRED_REASONING_SUITES = {
+        "reasoning.math",
+        "reasoning.real_world",
+        "reasoning.instruction_following",
+    }
+
+    def test_task11_reasoning_suites_load_with_twenty_tasks(self):
+        clear_cache()
+        suites = {
+            suite["id"]: suite
+            for suite in list_suites()
+            if suite["id"] in self.REQUIRED_REASONING_SUITES
+        }
+
+        assert set(suites) == self.REQUIRED_REASONING_SUITES
+
+        for suite_id, suite in suites.items():
+            tasks = load_tasks(suite["task_file"])
+            assert len(tasks) == 20, f"{suite_id} should contain 20 tasks"

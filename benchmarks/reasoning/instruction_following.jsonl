@@ -1,0 +1,20 @@
+{"id":"instruction_format_001","description":"Reply with exactly this text and nothing else: READY","expected_output":"READY","metadata":{"category":"text"}}
+{"id":"instruction_format_002","description":"Reply with the word blue in lowercase and nothing else.","expected_output":"blue","metadata":{"category":"text"}}
+{"id":"instruction_format_003","description":"Reply with the three letters ABC separated by commas and no spaces.","expected_output":"A,B,C","metadata":{"category":"text"}}
+{"id":"instruction_format_004","description":"Reply with exactly two words: local benchmark","expected_output":"local benchmark","metadata":{"category":"text"}}
+{"id":"instruction_format_005","description":"Reply with the number 42 wrapped in square brackets.","expected_output":"[42]","metadata":{"category":"text"}}
+{"id":"instruction_transform_006","description":"Convert HELLO to lowercase. Reply with only the converted text.","expected_output":"hello","metadata":{"category":"text"}}
+{"id":"instruction_transform_007","description":"Convert model test to uppercase. Reply with only the converted text.","expected_output":"MODEL TEST","metadata":{"category":"text"}}
+{"id":"instruction_transform_008","description":"Reverse the letters in stop. Reply with only the reversed word.","expected_output":"pots","metadata":{"category":"text"}}
+{"id":"instruction_transform_009","description":"Remove spaces from local model benchmark. Reply with only the result.","expected_output":"localmodelbenchmark","metadata":{"category":"text"}}
+{"id":"instruction_transform_010","description":"Replace each dash in one-two-three with a slash. Reply with only the result.","expected_output":"one/two/three","metadata":{"category":"text"}}
+{"id":"instruction_select_011","description":"From red, green, blue, reply with only the second color.","expected_output":"green","metadata":{"category":"text"}}
+{"id":"instruction_select_012","description":"From cat, dog, bird, reply with only the last word.","expected_output":"bird","metadata":{"category":"text"}}
+{"id":"instruction_select_013","description":"Reply with only the first letter of benchmark.","expected_output":"b","metadata":{"category":"text"}}
+{"id":"instruction_select_014","description":"Reply with only the last letter of local.","expected_output":"l","metadata":{"category":"text"}}
+{"id":"instruction_count_015","description":"How many words are in this phrase: fast local model. Reply with only the number.","expected_output":"3","metadata":{"category":"math"}}
+{"id":"instruction_count_016","description":"How many commas are in this text: a,b,c,d. Reply with only the number.","expected_output":"3","metadata":{"category":"math"}}
+{"id":"instruction_boolean_017","description":"If the word apple contains the letter z, reply yes. Otherwise reply no. Reply with only yes or no.","expected_output":"no","metadata":{"category":"text"}}
+{"id":"instruction_boolean_018","description":"If 12 is greater than 8, reply yes. Otherwise reply no. Reply with only yes or no.","expected_output":"yes","metadata":{"category":"text"}}
+{"id":"instruction_order_019","description":"Sort these numbers from smallest to largest: 9, 2, 5. Reply with numbers separated by commas and no spaces.","expected_output":"2,5,9","metadata":{"category":"text"}}
+{"id":"instruction_order_020","description":"Reply with exactly: PASS:task11","expected_output":"PASS:task11","metadata":{"category":"text"}}

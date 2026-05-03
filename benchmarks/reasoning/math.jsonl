@@ -1,1 +1,20 @@
-{"id": "math_add", "description": "What is 2+2?", "expected_output": "4", "metadata": {"category": "math"}}
+{"id":"math_arithmetic_001","description":"Compute 17 + 28. Reply with only the number.","expected_output":"45","metadata":{"category":"math"}}
+{"id":"math_arithmetic_002","description":"Compute 96 - 37. Reply with only the number.","expected_output":"59","metadata":{"category":"math"}}
+{"id":"math_arithmetic_003","description":"Compute 14 * 6. Reply with only the number.","expected_output":"84","metadata":{"category":"math"}}
+{"id":"math_arithmetic_004","description":"Compute 144 / 12. Reply with only the number.","expected_output":"12","metadata":{"category":"math"}}
+{"id":"math_fraction_005","description":"What is one half of 86? Reply with only the number.","expected_output":"43","metadata":{"category":"math"}}
+{"id":"math_percent_006","description":"What is 25 percent of 240? Reply with only the number.","expected_output":"60","metadata":{"category":"math"}}
+{"id":"math_percent_007","description":"A price is $80 and increases by 15 percent. What is the new price? Reply with only the number.","expected_output":"92","metadata":{"category":"math"}}
+{"id":"math_average_008","description":"What is the average of 8, 14, and 20? Reply with only the number.","expected_output":"14","metadata":{"category":"math"}}
+{"id":"math_sequence_009","description":"The sequence is 3, 6, 12, 24. What is the next number? Reply with only the number.","expected_output":"48","metadata":{"category":"math"}}
+{"id":"math_algebra_010","description":"Solve for x: x + 19 = 52. Reply with only the number.","expected_output":"33","metadata":{"category":"math"}}
+{"id":"math_algebra_011","description":"Solve for x: 5x = 65. Reply with only the number.","expected_output":"13","metadata":{"category":"math"}}
+{"id":"math_word_012","description":"A box has 9 rows of 7 cans. How many cans are there? Reply with only the number.","expected_output":"63","metadata":{"category":"math"}}
+{"id":"math_word_013","description":"You buy 3 notebooks at $4 each and 2 pens at $3 each. What is the total cost? Reply with only the number.","expected_output":"18","metadata":{"category":"math"}}
+{"id":"math_time_014","description":"A trip starts at 9:15 and lasts 2 hours 40 minutes. What hour is it on a 24-hour clock? Reply with only the hour number.","expected_output":"11","metadata":{"category":"math"}}
+{"id":"math_geometry_015","description":"A rectangle is 9 units wide and 5 units tall. What is its area? Reply with only the number.","expected_output":"45","metadata":{"category":"math"}}
+{"id":"math_geometry_016","description":"A square has side length 11. What is its perimeter? Reply with only the number.","expected_output":"44","metadata":{"category":"math"}}
+{"id":"math_decimal_017","description":"Compute 7.5 + 2.25. Reply with only the number.","expected_output":"9.75","metadata":{"category":"math","tolerance":0.001}}
+{"id":"math_decimal_018","description":"Compute 3.6 * 4. Reply with only the number.","expected_output":"14.4","metadata":{"category":"math","tolerance":0.001}}
+{"id":"math_ratio_019","description":"A recipe uses 2 cups of rice for 5 servings. How many cups are needed for 15 servings? Reply with only the number.","expected_output":"6","metadata":{"category":"math"}}
+{"id":"math_probability_020","description":"A bag has 3 red balls and 7 blue balls. How many balls are in the bag? Reply with only the number.","expected_output":"10","metadata":{"category":"math"}}
