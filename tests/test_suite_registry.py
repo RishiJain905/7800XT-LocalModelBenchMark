@@ -531,3 +531,82 @@ class TestTask12CodingSuites:
                 }
                 assert metadata.get("artifact_extension")
                 assert metadata.get("keywords")
+
+
+class TestTask13ToolCallingSuite:
+    """Acceptance coverage for Task 13 JSON tool-calling benchmark file."""
+
+    REQUIRED_TOOLS = {
+        "get_weather",
+        "get_forecast",
+        "calculator",
+        "search_files",
+        "create_calendar_event",
+        "draft_email",
+        "extract_data",
+        "book_travel",
+        "generate_report",
+    }
+
+    def test_task13_tool_calling_suite_loads_with_twenty_json_tasks(self):
+        clear_cache()
+        suite = get_suite("tools.json_tool_calling")
+        tasks = load_tasks(suite["task_file"])
+
+        assert len(tasks) == 20
+
+        seen_tools = set()
+        for task in tasks:
+            metadata = task.get("metadata", {})
+            assert task.get("command") == "noop"
+            assert metadata.get("category") == "json"
+            assert metadata.get("expected_tool")
+            assert task["expected_output"] == metadata["expected_tool"]
+            assert metadata.get("required_argument_keys")
+            assert isinstance(metadata["required_argument_keys"], list)
+            seen_tools.add(metadata["expected_tool"])
+
+        assert self.REQUIRED_TOOLS <= seen_tools
+
+
+class TestTask14LongContextSuite:
+    """Acceptance coverage for Task 14 long-context benchmark file."""
+
+    REQUIRED_TASK_TYPES = {
+        "recall",
+        "buried_instruction",
+        "summary_keywords",
+        "cross_section_compare",
+    }
+
+    def test_task14_long_context_suite_loads_with_context_metadata(self):
+        clear_cache()
+        suite = get_suite("context.long_context")
+        tasks = load_tasks(suite["task_file"])
+
+        assert len(tasks) == 8
+
+        seen_task_types = set()
+        for task in tasks:
+            metadata = task.get("metadata", {})
+            description = task["description"]
+
+            assert task.get("command") == "noop"
+            assert len(description) >= 2500
+            assert metadata.get("suite_category") == "context"
+            assert metadata.get("task_type") in self.REQUIRED_TASK_TYPES
+            assert isinstance(metadata.get("estimated_context_tokens"), int)
+            assert metadata["estimated_context_tokens"] > 0
+            assert metadata.get("prompt_size_chars") == len(description)
+
+            seen_task_types.add(metadata["task_type"])
+
+            if metadata["task_type"] == "summary_keywords":
+                assert metadata.get("category") == "keyword"
+                assert metadata.get("keywords")
+                assert isinstance(metadata["keywords"], list)
+                assert metadata.get("threshold") is not None
+            else:
+                assert metadata.get("category") == "text"
+
+        assert seen_task_types == self.REQUIRED_TASK_TYPES

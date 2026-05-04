@@ -10,13 +10,13 @@ def score(task: dict, response: str) -> dict:
     """Score a response by parsing it as JSON and optionally checking structure.
 
     Checks performed (in order):
-    1. Response parses as valid JSON.
+    1. Response parses as a valid JSON object.
     2. If ``task["expected_tool"]`` is present, ``parsed["tool"]`` must match
        exactly.
-    3. If ``task["required_argument_keys"]`` is present, each listed key must
-       exist in ``parsed["arguments"]``.
+    3. If ``task["required_argument_keys"]`` is present, each listed key earns
+       an independent point when it exists in ``parsed["arguments"]``.
 
-    The overall score is the fraction of applicable checks that pass.
+    The overall score is the fraction of applicable points that pass.
 
     Args:
         task: Task dictionary optionally containing ``expected_tool`` and
@@ -56,9 +56,9 @@ def score(task: dict, response: str) -> dict:
             "reason": f"JSON parsed but result is {type(parsed).__name__}, expected object",
         }
 
-    # --- Determine which checks apply and run them -------------------------
-    checks_total = 1  # JSON parse always counts as 1
-    checks_passed = 1 if isinstance(parsed, dict) else 0
+    # --- Determine which scoring points apply and run them -----------------
+    checks_total = 1  # Valid JSON object always counts as 1 point.
+    checks_passed = 1
     reasons: list[str] = ["JSON parsed successfully"]
 
     # 2. tool matching
@@ -83,13 +83,13 @@ def score(task: dict, response: str) -> dict:
 
     # 3. required argument keys
     if required_keys is not None:
-        checks_total += 1
-
         if not isinstance(required_keys, list):
+            checks_total += 1
             reasons.append(
                 f"'required_argument_keys' is not a list: {type(required_keys).__name__}"
             )
         else:
+            checks_total += len(required_keys)
             arguments = parsed.get("arguments")
 
             if arguments is None:
@@ -100,10 +100,11 @@ def score(task: dict, response: str) -> dict:
                 )
             else:
                 missing_keys = [str(k) for k in required_keys if k not in arguments]
+                present_count = len(required_keys) - len(missing_keys)
+                checks_passed += present_count
                 if missing_keys:
                     reasons.append(f"Missing argument keys: {', '.join(missing_keys)}")
                 else:
-                    checks_passed += 1
                     reasons.append(
                         f"All required argument keys present: {', '.join(str(k) for k in required_keys)}"
                     )

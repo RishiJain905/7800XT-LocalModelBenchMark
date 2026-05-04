@@ -6,6 +6,7 @@ functions extracted from the root CLI.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from unittest.mock import patch, MagicMock
 
@@ -136,6 +137,8 @@ class TestRunBenchmarkNormal:
             "repeat_index",
             "repeat_count",
             "artifact_paths",
+            "task_metadata",
+            "prompt_size_chars",
         }
 
         for r in results:
@@ -148,6 +151,8 @@ class TestRunBenchmarkNormal:
             assert r["latency_sec"] == 0.5
             assert r["score"] == 1.0
             assert r["passed"] is True
+            assert r["task_metadata"] == {"category": r["category"]}
+            assert r["prompt_size_chars"] == len(r["prompt"])
 
         assert results[0]["task_id"] == "t-01"
         assert results[0]["category"] == "text"
@@ -196,6 +201,35 @@ class TestRunBenchmarkNormal:
         assert artifact_path.read_text(encoding="utf-8") == response
         assert results[0]["artifact_paths"] == [str(artifact_path.resolve())]
         assert results[0]["passed"] is True
+
+    def test_json_tool_task_scores_with_real_json_scorer(self):
+        config = _make_config(config_id="cfg-tools")
+        task = {
+            "id": "tool_weather_current_001",
+            "description": "Return a weather tool call.",
+            "command": "noop",
+            "expected_output": "get_weather",
+            "metadata": {
+                "category": "json",
+                "expected_tool": "get_weather",
+                "required_argument_keys": ["location", "unit"],
+            },
+        }
+        options = {"repeats": 1, "run_id": "run-tools"}
+        response = json.dumps(
+            {"tool": "get_weather", "arguments": {"location": "Tokyo", "unit": "c"}}
+        )
+
+        with patch("runners.benchmark_runner.run_prompt") as mock_run_prompt:
+            mock_run_prompt.return_value = _make_model_result(response, 0.5)
+
+            result = run_benchmark(config, [task], options)
+
+        assert result["passed"] == 1
+        assert result["average_score"] == 1.0
+        assert result["results"][0]["passed"] is True
+        assert result["results"][0]["score"] == 1.0
+        assert "Tool matches" in result["results"][0]["reason"]
 
     def test_error_handling_one_task_raises(self):
         """One task succeeds, one raises — verify error result fields and continued execution."""
@@ -599,6 +633,8 @@ class TestBuildResult:
             "top_p",
             "max_tokens",
         }
+        assert result["task_metadata"] == {"category": "text"}
+        assert result["prompt_size_chars"] == len("hello")
 
 
 class TestBuildErrorResult:
@@ -628,6 +664,8 @@ class TestBuildErrorResult:
         assert result["prompt"] == "fail task"
         assert result["expected"] == "n/a"
         assert isinstance(result["settings"], dict)
+        assert result["task_metadata"] == {"category": "general"}
+        assert result["prompt_size_chars"] == len("fail task")
 
 
 class TestExtractSettings:

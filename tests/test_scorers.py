@@ -469,7 +469,7 @@ class TestJsonValidScore:
         result = json_valid_score(task, "not json at all")
         assert result["score"] == 0.0
         assert result["passed"] is False
-        assert "Invalid JSON" in result["reason"]
+        assert result["reason"].startswith("Invalid JSON:")
 
     # Tool mismatch
 
@@ -495,14 +495,14 @@ class TestJsonValidScore:
     # Missing required argument keys
 
     def test_missing_required_argument_key(self):
-        """Missing one required argument key fails the check."""
+        """Missing one required argument key still earns credit for present keys."""
         task = self._make_task(
             expected_tool="calculator", required_argument_keys=["a", "b"]
         )
         response = self._make_response(tool="calculator", arguments={"a": 1})
         result = json_valid_score(task, response)
-        # 2 out of 3 checks passed (json + tool match, but args fail)
-        assert result["score"] == 0.6667
+        # 3 out of 4 points pass: JSON object, tool match, and key "a".
+        assert result["score"] == 0.75
         assert result["passed"] is False
         assert "Missing argument keys: b" in result["reason"]
 
@@ -525,24 +525,40 @@ class TestJsonValidScore:
     # Partial credit / mixed checks
 
     def test_partial_credit_valid_json_wrong_tool_correct_arguments(self):
-        """Valid JSON but wrong tool: 2/3 checks pass (rounded to 4 decimals)."""
+        """Valid JSON but wrong tool: JSON and each required key still get credit."""
         task = self._make_task(expected_tool="add", required_argument_keys=["x", "y"])
         response = self._make_response(tool="multiply", arguments={"x": 1, "y": 2})
         result = json_valid_score(task, response)
-        assert result["score"] == 0.6667
+        assert result["score"] == 0.75
         assert result["passed"] is False
         assert "Tool mismatch" in result["reason"]
         assert "All required argument keys present" in result["reason"]
 
     def test_partial_credit_valid_json_wrong_tool_missing_arguments(self):
-        """Valid JSON but wrong tool and missing arguments: 1/3 checks pass (rounded to 4 decimals)."""
+        """Valid JSON but wrong tool and one missing argument gets key-level credit."""
         task = self._make_task(expected_tool="add", required_argument_keys=["x", "y"])
         response = self._make_response(tool="multiply", arguments={"x": 1})
         result = json_valid_score(task, response)
-        assert result["score"] == 0.3333
+        assert result["score"] == 0.5
         assert result["passed"] is False
         assert "Tool mismatch" in result["reason"]
         assert "Missing argument keys: y" in result["reason"]
+
+    def test_partial_credit_multi_argument_reports_all_missing_keys(self):
+        """Multi-argument tool calls report all missing keys and credit present keys."""
+        task = self._make_task(
+            expected_tool="create_calendar_event",
+            required_argument_keys=["title", "date", "time", "attendees"],
+        )
+        response = self._make_response(
+            tool="create_calendar_event",
+            arguments={"title": "Planning"},
+        )
+        result = json_valid_score(task, response)
+        # 3 out of 6 points pass: JSON object, tool match, and key "title".
+        assert result["score"] == 0.5
+        assert result["passed"] is False
+        assert "Missing argument keys: date, time, attendees" in result["reason"]
 
     # Validate JSON only
 
@@ -845,4 +861,4 @@ class TestPhase1TaskFormatContract:
         result = scorer(task, response)
         self._assert_result_shape(result)
         assert result["passed"] is False
-        assert result["score"] == pytest.approx(0.3333, abs=0.0001)
+        assert result["score"] == pytest.approx(0.5, abs=0.0001)

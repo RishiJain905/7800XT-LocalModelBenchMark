@@ -78,6 +78,8 @@ def _build_result(
         "reason": score_result["reason"],
         "settings": _extract_settings(config),
         "artifact_paths": [],
+        "task_metadata": dict(task.get("metadata", {})),
+        "prompt_size_chars": len(task["description"]),
     }
 
 
@@ -104,6 +106,8 @@ def _build_error_result(
         "reason": str(error),
         "settings": _extract_settings(config),
         "artifact_paths": [],
+        "task_metadata": dict(task.get("metadata", {})),
+        "prompt_size_chars": len(task["description"]),
     }
 
 
