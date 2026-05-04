@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import csv
 import sys
 from datetime import datetime
 from typing import Any
@@ -388,7 +389,8 @@ class TestAppendSummary:
         header = content[0]
         assert header == (
             "run_id,model_config_id,task_file,total_tasks,total_attempts,passed,failed,"
-            "pass_rate,average_score,average_latency_sec,repeats"
+            "pass_rate,average_score,average_latency_sec,repeats,suite_id,suite_name,"
+            "run_folder,status,started_at,completed_at,artifact_count"
         )
 
     def test_appends_row(self, monkeypatch, tmp_path):
@@ -579,6 +581,43 @@ class TestAppendSummary:
         assert parts[6] == "3"  # failed
         assert parts[7] == "0.5000"  # pass_rate
         assert parts[10] == "3"  # repeats
+
+    def test_append_summary_writes_task16_metadata(self, monkeypatch, tmp_path):
+        """Task 16 metadata columns are populated for new summary rows."""
+        monkeypatch.chdir(tmp_path)
+        results = [
+            {
+                "latency_sec": 0.5,
+                "score": 1.0,
+                "passed": True,
+                "artifact_paths": ["a.tsx", "b.css"],
+            }
+        ]
+
+        append_summary(
+            results,
+            "cfg",
+            "benchmarks/coding/frontend.jsonl",
+            "run-1",
+            repeats=1,
+            total_tasks=1,
+            suite_info={"id": "coding.frontend", "name": "Frontend Coding"},
+            run_folder="results/runs/cfg/run-1",
+            status="completed",
+            started_at="2026-05-03T12:00:00",
+            completed_at="2026-05-03T12:05:00",
+        )
+
+        with open(tmp_path / "results" / "summary.csv", newline="", encoding="utf-8") as fh:
+            row = next(csv.DictReader(fh))
+
+        assert row["suite_id"] == "coding.frontend"
+        assert row["suite_name"] == "Frontend Coding"
+        assert row["run_folder"] == "results/runs/cfg/run-1"
+        assert row["status"] == "completed"
+        assert row["started_at"] == "2026-05-03T12:00:00"
+        assert row["completed_at"] == "2026-05-03T12:05:00"
+        assert row["artifact_count"] == "2"
 
 
 # ---------------------------------------------------------------------------
@@ -919,7 +958,7 @@ class TestMainFullRun:
 
         assert exc_info.value.code == 130
         mock_raw_copy.assert_not_called()
-        mock_append_summary.assert_not_called()
+        mock_append_summary.assert_called_once()
         mock_lb.assert_not_called()
 
         run_root = tmp_path / "results" / "runs" / "cancel-cfg"
@@ -1465,7 +1504,7 @@ class TestDryRunContract:
 
 
 class TestSummaryCsvColumnsContract:
-    """Contract tests proving summary CSV preserves the Phase 1 column schema."""
+    """Contract tests proving summary CSV preserves Phase 1 fields plus Task 16 fields."""
 
     EXPECTED_COLUMNS = [
         "run_id",
@@ -1479,10 +1518,17 @@ class TestSummaryCsvColumnsContract:
         "average_score",
         "average_latency_sec",
         "repeats",
+        "suite_id",
+        "suite_name",
+        "run_folder",
+        "status",
+        "started_at",
+        "completed_at",
+        "artifact_count",
     ]
 
     def test_summary_csv_header_contract(self, monkeypatch, tmp_path):
-        """append_summary produces a CSV with exactly the documented Phase 1 columns."""
+        """append_summary produces the expanded Task 16 CSV schema."""
         monkeypatch.chdir(tmp_path)
         results = [
             {

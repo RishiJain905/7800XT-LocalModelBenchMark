@@ -15,8 +15,8 @@ def generate_leaderboard(
     """Generate a Markdown leaderboard from the benchmark summary CSV.
 
     Reads the summary CSV, deduplicates rows keeping only the most recent
-    run for each ``(model_config_id, task_file)`` pair, then writes a sorted
-    Markdown leaderboard table to disk.
+    run for each model/suite pair when suite metadata exists, then writes
+    suite-grouped Markdown leaderboard tables to disk.
 
     Args:
         summary_csv_path: Path to the summary CSV file produced by the
@@ -56,7 +56,7 @@ def generate_leaderboard(
                 return str(out_path.resolve())
 
             for row in rows:
-                key = (row["model_config_id"], row["task_file"])
+                key = _dedupe_key(row)
                 grouped[key].append(row)
     except OSError as exc:
         print(f"ERROR: Failed to read summary CSV: {exc}", file=sys.stderr)
@@ -75,7 +75,10 @@ def generate_leaderboard(
         parsed.append(
             {
                 "model_config_id": row["model_config_id"],
+                "suite_id": row.get("suite_id", ""),
+                "suite_name": row.get("suite_name", ""),
                 "task_file": row["task_file"],
+                "status": row.get("status", ""),
                 "total_tasks": int(row["total_tasks"]),
                 "total_attempts": int(row.get("total_attempts", row["total_tasks"])),
                 "repeats": int(row.get("repeats", "1")),
@@ -85,36 +88,38 @@ def generate_leaderboard(
             }
         )
 
-    # --- Sort ---
-    parsed.sort(
-        key=lambda r: (
-            -r["average_score"],
-            -r["pass_rate"],
-            r["average_latency_sec"],
-        )
-    )
-
     # --- Render Markdown ---
     lines: list[str] = [
         "# Local Model Benchmark Leaderboard",
         "",
-        (
-            "| Model Config | Task File | Total Tasks | Total Attempts | Repeats "
-            "| Pass Rate | Avg Score | Avg Latency |"
-        ),
-        "|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
 
+    by_suite: defaultdict[str, list[dict]] = defaultdict(list)
     for row in parsed:
-        lines.append(
-            f"| {row['model_config_id']} | {row['task_file']} | "
-            f"{row['total_tasks']} | {row['total_attempts']} | "
-            f"{row['repeats']} | "
-            f"{row['pass_rate'] * 100:.1f}% | "
-            f"{row['average_score']:.2f} | {row['average_latency_sec']:.2f}s |"
-        )
+        by_suite[_suite_group_label(row)].append(row)
 
-    lines.append("")  # trailing newline
+    for suite_label in sorted(by_suite):
+        lines.extend(
+            [
+                f"## {suite_label}",
+                "",
+                (
+                    "| Model Config | Suite | Task File | Status | Total Attempts "
+                    "| Pass Rate | Avg Score | Avg Latency |"
+                ),
+                "|---|---|---|---|---:|---:|---:|---:|",
+            ]
+        )
+        suite_rows = sorted(by_suite[suite_label], key=_rank_key)
+        for row in suite_rows:
+            suite = _suite_display(row)
+            lines.append(
+                f"| {row['model_config_id']} | {suite} | {row['task_file']} | "
+                f"{row['status']} | {row['total_attempts']} | "
+                f"{row['pass_rate'] * 100:.1f}% | "
+                f"{row['average_score']:.2f} | {row['average_latency_sec']:.2f}s |"
+            )
+        lines.append("")
 
     try:
         with open(out_path, "w", encoding="utf-8") as fh:
@@ -123,6 +128,31 @@ def generate_leaderboard(
         print(f"ERROR: Failed to write leaderboard: {exc}", file=sys.stderr)
 
     return str(out_path.resolve())
+
+
+def _dedupe_key(row: dict[str, str]) -> tuple[str, str]:
+    """Dedupe by model/suite for Task 16 rows, otherwise model/task file."""
+    suite_id = row.get("suite_id", "")
+    if suite_id:
+        return (row["model_config_id"], suite_id)
+    return (row["model_config_id"], row["task_file"])
+
+
+def _rank_key(row: dict) -> tuple[float, float, float]:
+    """Sort by score desc, pass rate desc, latency asc."""
+    return (-row["average_score"], -row["pass_rate"], row["average_latency_sec"])
+
+
+def _suite_display(row: dict) -> str:
+    """Return a compact suite label for a leaderboard row."""
+    if row["suite_id"] and row["suite_name"]:
+        return f"{row['suite_id']} ({row['suite_name']})"
+    return row["suite_id"] or "legacy"
+
+
+def _suite_group_label(row: dict) -> str:
+    """Group suite rows by suite; legacy rows fall back to task file."""
+    return _suite_display(row) if row["suite_id"] else row["task_file"]
 
 
 def _write_empty_leaderboard(out_path: Path) -> None:

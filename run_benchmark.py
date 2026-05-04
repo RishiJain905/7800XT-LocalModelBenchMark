@@ -20,6 +20,7 @@ from runners.result_writer import (
     append_run_raw_result,
     append_summary,
     build_manifest,
+    count_artifacts,
     create_run_folder,
     update_manifest_status,
     write_manifest,
@@ -80,6 +81,25 @@ def _load_resume_config(manifest: dict[str, Any]) -> dict[str, Any]:
     if config_path.is_file():
         return load_config(str(config_path))
     return _config_from_manifest(manifest)
+
+
+def _summary_metadata(
+    results: list[dict[str, Any]],
+    run_dir: str | Path,
+    status: str,
+    started_at: str = "",
+    completed_at: str | None = None,
+    suite_info: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build metadata shared by summary.csv and per-run summary.json."""
+    return {
+        "suite_info": suite_info,
+        "run_folder": str(Path(run_dir).resolve()),
+        "status": status,
+        "started_at": started_at,
+        "completed_at": completed_at,
+        "artifact_count": count_artifacts(results),
+    }
 
 
 def _run_resume(args: argparse.Namespace) -> None:
@@ -159,8 +179,27 @@ def _run_resume(args: argparse.Namespace) -> None:
                 "cancelled",
                 repeats=state.repeats,
                 suite_info=state.suite_info,
+                started_at=state.manifest.get("started_at", ""),
+                completed_at=completed_at,
+                artifact_count=count_artifacts(combined_results),
             )
             update_manifest_status(state.run_dir, "cancelled", completed_at)
+            append_summary(
+                combined_results,
+                config["id"],
+                state.manifest["task_file"],
+                state.manifest["run_id"],
+                repeats=state.repeats,
+                total_tasks=partial_summary["total_tasks"],
+                **_summary_metadata(
+                    combined_results,
+                    state.run_dir,
+                    "cancelled",
+                    state.manifest.get("started_at", ""),
+                    completed_at,
+                    state.suite_info,
+                ),
+            )
         except OSError as exc:
             print(f"Error writing cancelled run metadata: {exc}", file=sys.stderr)
 
@@ -169,6 +208,7 @@ def _run_resume(args: argparse.Namespace) -> None:
         print(f"Run folder: {state.run_dir}")
         sys.exit(130)
     except Exception:
+        completed_at = datetime.now().isoformat(timespec="seconds")
         combined_results = completed_results + new_results
         partial_summary = _build_summary_from_results(
             combined_results,
@@ -185,11 +225,26 @@ def _run_resume(args: argparse.Namespace) -> None:
                 "failed",
                 repeats=state.repeats,
                 suite_info=state.suite_info,
+                started_at=state.manifest.get("started_at", ""),
+                completed_at=completed_at,
+                artifact_count=count_artifacts(combined_results),
             )
-            update_manifest_status(
-                state.run_dir,
-                "failed",
-                datetime.now().isoformat(timespec="seconds"),
+            update_manifest_status(state.run_dir, "failed", completed_at)
+            append_summary(
+                combined_results,
+                config["id"],
+                state.manifest["task_file"],
+                state.manifest["run_id"],
+                repeats=state.repeats,
+                total_tasks=partial_summary["total_tasks"],
+                **_summary_metadata(
+                    combined_results,
+                    state.run_dir,
+                    "failed",
+                    state.manifest.get("started_at", ""),
+                    completed_at,
+                    state.suite_info,
+                ),
             )
         except OSError as exc:
             print(f"Error writing failed run metadata: {exc}", file=sys.stderr)
@@ -213,6 +268,7 @@ def _run_resume(args: argparse.Namespace) -> None:
     print(f"Average latency: {summary['average_latency_sec']:.2f}s")
 
     try:
+        completed_at = datetime.now().isoformat(timespec="seconds")
         write_run_summary(
             state.run_dir,
             summary,
@@ -221,12 +277,11 @@ def _run_resume(args: argparse.Namespace) -> None:
             "completed",
             repeats=state.repeats,
             suite_info=state.suite_info,
+            started_at=state.manifest.get("started_at", ""),
+            completed_at=completed_at,
+            artifact_count=count_artifacts(combined_results),
         )
-        update_manifest_status(
-            state.run_dir,
-            "completed",
-            datetime.now().isoformat(timespec="seconds"),
-        )
+        update_manifest_status(state.run_dir, "completed", completed_at)
         print(f"Saved raw results to {state.run_dir / 'raw.jsonl'}")
     except OSError as exc:
         print(f"Error writing resumed run metadata: {exc}", file=sys.stderr)
@@ -252,6 +307,14 @@ def _run_resume(args: argparse.Namespace) -> None:
             state.manifest["run_id"],
             repeats=state.repeats,
             total_tasks=summary["total_tasks"],
+            **_summary_metadata(
+                combined_results,
+                state.run_dir,
+                "completed",
+                state.manifest.get("started_at", ""),
+                completed_at,
+                state.suite_info,
+            ),
         )
         print(f"Update summary at {summary_path}")
     except OSError as exc:
@@ -445,8 +508,27 @@ def main() -> None:
                 "cancelled",
                 repeats=args.repeats,
                 suite_info=suite_info,
+                started_at=started_at,
+                completed_at=completed_at,
+                artifact_count=count_artifacts(completed_results),
             )
             update_manifest_status(run_dir, "cancelled", completed_at)
+            append_summary(
+                completed_results,
+                config["id"],
+                task_file,
+                run_id,
+                repeats=args.repeats,
+                total_tasks=partial_summary["total_tasks"],
+                **_summary_metadata(
+                    completed_results,
+                    run_dir,
+                    "cancelled",
+                    started_at,
+                    completed_at,
+                    suite_info,
+                ),
+            )
         except OSError as exc:
             print(f"Error writing cancelled run metadata: {exc}", file=sys.stderr)
 
@@ -456,6 +538,7 @@ def main() -> None:
         print(f"Saved raw results to {run_dir / 'raw.jsonl'}")
         sys.exit(130)
     except Exception:
+        completed_at = datetime.now().isoformat(timespec="seconds")
         partial_summary = _build_summary_from_results(
             completed_results,
             run_id,
@@ -471,14 +554,29 @@ def main() -> None:
                 "failed",
                 repeats=args.repeats,
                 suite_info=suite_info,
+                started_at=started_at,
+                completed_at=completed_at,
+                artifact_count=count_artifacts(completed_results),
+            )
+            update_manifest_status(run_dir, "failed", completed_at)
+            append_summary(
+                completed_results,
+                config["id"],
+                task_file,
+                run_id,
+                repeats=args.repeats,
+                total_tasks=partial_summary["total_tasks"],
+                **_summary_metadata(
+                    completed_results,
+                    run_dir,
+                    "failed",
+                    started_at,
+                    completed_at,
+                    suite_info,
+                ),
             )
         except OSError as exc:
             print(f"Error writing failed run summary: {exc}", file=sys.stderr)
-        update_manifest_status(
-            run_dir,
-            "failed",
-            datetime.now().isoformat(timespec="seconds"),
-        )
         raise
 
     flat_results = summary["results"]
@@ -493,6 +591,7 @@ def main() -> None:
     print(f"Average score: {summary['average_score']:.2f}")
     print(f"Average latency: {summary['average_latency_sec']:.2f}s")
 
+    completed_at = datetime.now().isoformat(timespec="seconds")
     try:
         raw_path = write_run_raw_results(run_dir, flat_results)
         write_run_summary(
@@ -503,12 +602,11 @@ def main() -> None:
             "completed",
             repeats=args.repeats,
             suite_info=suite_info,
+            started_at=started_at,
+            completed_at=completed_at,
+            artifact_count=count_artifacts(flat_results),
         )
-        update_manifest_status(
-            run_dir,
-            "completed",
-            datetime.now().isoformat(timespec="seconds"),
-        )
+        update_manifest_status(run_dir, "completed", completed_at)
         print(f"Saved raw results to {raw_path}")
     except OSError as exc:
         print(f"Error writing raw results: {exc}", file=sys.stderr)
@@ -529,6 +627,14 @@ def main() -> None:
             run_id,
             repeats=args.repeats,
             total_tasks=summary["total_tasks"],
+            **_summary_metadata(
+                flat_results,
+                run_dir,
+                "completed",
+                started_at,
+                completed_at,
+                suite_info,
+            ),
         )
         print(f"Update summary at {summary_path}")
     except OSError as exc:

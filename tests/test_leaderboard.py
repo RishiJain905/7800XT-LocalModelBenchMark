@@ -43,24 +43,25 @@ class TestGenerateLeaderboard:
         lines = output_path.read_text(encoding="utf-8").strip().split("\n")
 
         assert lines[0] == "# Local Model Benchmark Leaderboard"
+        assert lines[2] == "## tasks/math/basic_math.jsonl"
         assert (
-            lines[2]
-            == "| Model Config | Task File | Total Tasks | Total Attempts | Repeats | Pass Rate | Avg Score | Avg Latency |"
+            lines[4]
+            == "| Model Config | Suite | Task File | Status | Total Attempts | Pass Rate | Avg Score | Avg Latency |"
         )
-        assert lines[3] == "|---|---:|---:|---:|---:|---:|---:|---:|"
+        assert lines[5] == "|---|---|---|---|---:|---:|---:|---:|"
 
         # Sorted by avg_score desc: qwen-18b-iq4-4k (0.95) before qwen-9b-q8-4k (0.90)
-        assert "qwen-18b-iq4-4k" in lines[4]
-        assert "qwen-9b-q8-4k" in lines[5]
+        assert "qwen-18b-iq4-4k" in lines[6]
+        assert "qwen-9b-q8-4k" in lines[7]
 
         # Verify formatting in the first data row (higher scorer)
-        parts = lines[4].split("|")
+        parts = lines[6].split("|")
         assert "100.0%" in parts[6]
         assert "0.95" in parts[7]
         assert "2.88s" in parts[8]
 
         # Verify formatting in the second data row
-        parts = lines[5].split("|")
+        parts = lines[7].split("|")
         assert "90.0%" in parts[6]
         assert "0.90" in parts[7]
         assert "1.42s" in parts[8]
@@ -153,6 +154,37 @@ class TestGenerateLeaderboard:
         assert "model-C" in data_rows[2]
         assert "model-A" in data_rows[3]
 
+    def test_suite_rows_are_grouped_and_sorted_independently(
+        self, monkeypatch, tmp_path
+    ):
+        """Different suites render as separate groups with in-suite ranking."""
+        monkeypatch.chdir(tmp_path)
+        summary_path = tmp_path / "results" / "summary.csv"
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        header = (
+            "run_id,model_config_id,task_file,total_tasks,total_attempts,passed,failed,"
+            "pass_rate,average_score,average_latency_sec,repeats,suite_id,suite_name,"
+            "run_folder,status,started_at,completed_at,artifact_count"
+        )
+        rows = [
+            "run-1,math-slower,benchmarks/reasoning/math.jsonl,5,5,5,0,1.0000,0.9000,4.000,1,reasoning.math,Math,,completed,,,0",
+            "run-1,math-faster,benchmarks/reasoning/math.jsonl,5,5,5,0,1.0000,0.9000,1.000,1,reasoning.math,Math,,completed,,,0",
+            "run-1,code-model,benchmarks/coding/frontend.jsonl,5,5,4,1,0.8000,0.8000,2.000,1,coding.frontend,Frontend Coding,,completed,,,2",
+        ]
+        summary_path.write_text(header + "\n" + "\n".join(rows) + "\n", encoding="utf-8")
+
+        output_path = tmp_path / "results" / "reports" / "leaderboard.md"
+        generate_leaderboard(str(summary_path), str(output_path))
+
+        content = output_path.read_text(encoding="utf-8")
+        assert "## reasoning.math (Math)" in content
+        assert "## coding.frontend (Frontend Coding)" in content
+
+        lines = content.strip().split("\n")
+        data_rows = [ln for ln in lines if ln.startswith("| math-")]
+        assert "math-faster" in data_rows[0]
+        assert "math-slower" in data_rows[1]
+
     def test_deduplication_keeps_most_recent_run(self, monkeypatch, tmp_path):
         """Same (model_config_id, task_file) pair keeps the lexicographically larger run_id."""
         monkeypatch.chdir(tmp_path)
@@ -177,6 +209,36 @@ class TestGenerateLeaderboard:
         assert "90.0%" in data_rows[0]
         assert "0.90" in data_rows[0]
         assert "1.42s" in data_rows[0]
+
+    def test_deduplication_keeps_latest_run_per_model_suite(
+        self, monkeypatch, tmp_path
+    ):
+        """Task 16 rows dedupe by model_config_id and suite_id."""
+        monkeypatch.chdir(tmp_path)
+        summary_path = tmp_path / "results" / "summary.csv"
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(
+            "run_id,model_config_id,task_file,total_tasks,total_attempts,passed,failed,"
+            "pass_rate,average_score,average_latency_sec,repeats,suite_id,suite_name,"
+            "run_folder,status,started_at,completed_at,artifact_count\n"
+            "2026-05-01_19-56-53,model-a,benchmarks/reasoning/math.jsonl,"
+            "10,10,5,5,0.5000,0.5000,1.000,1,reasoning.math,Math,,completed,,,0\n"
+            "2026-05-01_20-00-00,model-a,benchmarks/reasoning/math_v2.jsonl,"
+            "10,10,9,1,0.9000,0.9000,1.420,1,reasoning.math,Math,,completed,,,0\n",
+            encoding="utf-8",
+        )
+        output_path = tmp_path / "results" / "reports" / "leaderboard.md"
+
+        generate_leaderboard(str(summary_path), str(output_path))
+
+        data_rows = [
+            ln
+            for ln in output_path.read_text(encoding="utf-8").splitlines()
+            if ln.startswith("| model-a")
+        ]
+        assert len(data_rows) == 1
+        assert "math_v2.jsonl" in data_rows[0]
+        assert "90.0%" in data_rows[0]
 
     def test_empty_csv(self, monkeypatch, tmp_path):
         """CSV with header only produces a 'No data yet.' leaderboard."""
@@ -248,9 +310,7 @@ class TestGenerateLeaderboard:
 
         assert output_path.exists()
         lines = output_path.read_text(encoding="utf-8").strip().split("\n")
-        assert lines[2] == (
-            "| Model Config | Task File | Total Tasks | Total Attempts | Repeats | Pass Rate | Avg Score | Avg Latency |"
-        )
+        assert lines[2] == "## tasks/math/basic_math.jsonl"
         data_rows = [ln for ln in lines if ln.startswith("| qwen-")]
         assert len(data_rows) == 1
         # total_attempts defaults to total_tasks (10), repeats defaults to 1

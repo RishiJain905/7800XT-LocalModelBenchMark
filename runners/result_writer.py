@@ -11,6 +11,27 @@ from statistics import mean
 
 VALID_RUN_STATUSES = {"running", "completed", "cancelled", "failed"}
 
+SUMMARY_FIELDNAMES = [
+    "run_id",
+    "model_config_id",
+    "task_file",
+    "total_tasks",
+    "total_attempts",
+    "passed",
+    "failed",
+    "pass_rate",
+    "average_score",
+    "average_latency_sec",
+    "repeats",
+    "suite_id",
+    "suite_name",
+    "run_folder",
+    "status",
+    "started_at",
+    "completed_at",
+    "artifact_count",
+]
+
 
 def create_run_folder(model_config_id: str, run_id: str) -> Path:
     """Create the structured per-run folder and placeholder files."""
@@ -108,17 +129,39 @@ def write_run_summary(
     status: str,
     repeats: int = 1,
     suite_info: dict | None = None,
+    started_at: str = "",
+    completed_at: str | None = None,
+    artifact_count: int | None = None,
 ) -> str:
     """Write aggregate run metadata to ``summary.json`` inside a run folder."""
     _validate_run_status(status)
+    run_dir = Path(run_dir)
+    manifest = _read_manifest_if_available(run_dir)
+    if not started_at:
+        started_at = manifest.get("started_at", "")
+    if completed_at is None:
+        completed_at = manifest.get("completed_at")
+    suite_id = ""
+    suite_name = ""
+    if suite_info:
+        suite_id = suite_info.get("id", "")
+        suite_name = suite_info.get("name", "")
+    else:
+        suite_id = manifest.get("suite_id", "")
+        suite_name = manifest.get("suite_name", "")
+    if artifact_count is None:
+        artifact_count = count_artifacts(summary.get("results", []))
+
     total_attempts = summary.get("total_attempts", 0)
     passed = summary.get("passed", 0)
     payload = {
         "run_id": summary["run_id"],
         "model_config_id": config["id"],
         "model_name": config.get("model_name", ""),
+        "suite_id": suite_id,
+        "suite_name": suite_name,
         "task_file": task_file,
-        "run_folder": str(Path(run_dir).resolve()),
+        "run_folder": str(run_dir.resolve()),
         "status": status,
         "total_tasks": summary.get("total_tasks", 0),
         "total_attempts": total_attempts,
@@ -128,17 +171,38 @@ def write_run_summary(
         "average_score": summary.get("average_score", 0.0),
         "average_latency_sec": summary.get("average_latency_sec", 0.0),
         "repeats": repeats,
+        "artifact_count": artifact_count,
+        "started_at": started_at,
+        "completed_at": completed_at,
     }
 
-    if suite_info:
-        payload["suite_id"] = suite_info.get("id", "")
-        payload["suite_name"] = suite_info.get("name", "")
-
-    path = Path(run_dir) / "summary.json"
+    path = run_dir / "summary.json"
     with path.open("w", encoding="utf-8") as fh:
         json.dump(payload, fh, indent=2, default=str)
         fh.write("\n")
     return str(path.resolve())
+
+
+def _read_manifest_if_available(run_dir: Path) -> dict:
+    """Read manifest metadata when present and valid."""
+    path = run_dir / "manifest.json"
+    if not path.is_file() or path.stat().st_size == 0:
+        return {}
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def count_artifacts(results: list[dict]) -> int:
+    """Count saved artifact paths across completed result rows."""
+    total = 0
+    for result in results:
+        paths = result.get("artifact_paths") or []
+        if isinstance(paths, list):
+            total += len(paths)
+    return total
 
 
 def _validate_run_status(status: str) -> None:
@@ -190,6 +254,13 @@ def append_summary(
     run_id: str,
     repeats: int = 1,
     total_tasks: int | None = None,
+    *,
+    suite_info: dict | None = None,
+    run_folder: str = "",
+    status: str = "",
+    started_at: str = "",
+    completed_at: str | None = None,
+    artifact_count: int | None = None,
 ) -> str:
     """Append a summary row to the results/summary.csv file.
 
@@ -216,6 +287,10 @@ def append_summary(
 
     if total_tasks is None:
         total_tasks = len(results) // repeats if repeats else len(results)
+    if status:
+        _validate_run_status(status)
+    if artifact_count is None:
+        artifact_count = count_artifacts(results)
 
     total_attempts = len(results)
     passed = sum(1 for r in results if r["passed"])
@@ -224,80 +299,74 @@ def append_summary(
     average_score = mean(r["score"] for r in results) if results else 0.0
     average_latency_sec = mean(r["latency_sec"] for r in results) if results else 0.0
 
-    fieldnames = [
-        "run_id",
-        "model_config_id",
-        "task_file",
-        "total_tasks",
-        "total_attempts",
-        "passed",
-        "failed",
-        "pass_rate",
-        "average_score",
-        "average_latency_sec",
-        "repeats",
-    ]
+    suite_id = suite_info.get("id", "") if suite_info else ""
+    suite_name = suite_info.get("name", "") if suite_info else ""
+    row = {
+        "run_id": run_id,
+        "model_config_id": model_config_id,
+        "task_file": task_file,
+        "total_tasks": total_tasks,
+        "total_attempts": total_attempts,
+        "passed": passed,
+        "failed": failed,
+        "pass_rate": f"{pass_rate:.4f}",
+        "average_score": f"{average_score:.4f}",
+        "average_latency_sec": f"{average_latency_sec:.3f}",
+        "repeats": repeats,
+        "suite_id": suite_id,
+        "suite_name": suite_name,
+        "run_folder": run_folder,
+        "status": status,
+        "started_at": started_at,
+        "completed_at": completed_at or "",
+        "artifact_count": artifact_count,
+    }
 
     file_exists = summary_path.exists()
+    needs_header = not file_exists or summary_path.stat().st_size == 0
 
     if file_exists and summary_path.stat().st_size > 0:
         with open(summary_path, "r", newline="", encoding="utf-8") as fh:
             reader = csv.DictReader(fh)
             existing_fieldnames = reader.fieldnames
 
-        if existing_fieldnames and existing_fieldnames != fieldnames:
+        if existing_fieldnames and existing_fieldnames != SUMMARY_FIELDNAMES:
             old_rows: list[dict[str, str]] = []
             with open(summary_path, "r", newline="", encoding="utf-8") as fh:
                 old_rows = list(csv.DictReader(fh))
 
             with open(summary_path, "w", newline="", encoding="utf-8") as fh:
                 writer = csv.DictWriter(
-                    fh, fieldnames=fieldnames, extrasaction="ignore"
+                    fh, fieldnames=SUMMARY_FIELDNAMES, extrasaction="ignore"
                 )
                 writer.writeheader()
-                for row in old_rows:
-                    writer.writerow(row)
-                writer.writerow(
-                    {
-                        "run_id": run_id,
-                        "model_config_id": model_config_id,
-                        "task_file": task_file,
-                        "total_tasks": total_tasks,
-                        "total_attempts": total_attempts,
-                        "passed": passed,
-                        "failed": failed,
-                        "pass_rate": f"{pass_rate:.4f}",
-                        "average_score": f"{average_score:.4f}",
-                        "average_latency_sec": f"{average_latency_sec:.3f}",
-                        "repeats": repeats,
-                    }
-                )
+                for old_row in old_rows:
+                    writer.writerow(_normalize_summary_row(old_row))
+                writer.writerow(row)
 
             return str(summary_path.resolve())
 
     with open(summary_path, "a", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer = csv.DictWriter(fh, fieldnames=SUMMARY_FIELDNAMES)
 
-        if not file_exists:
+        if needs_header:
             writer.writeheader()
 
-        writer.writerow(
-            {
-                "run_id": run_id,
-                "model_config_id": model_config_id,
-                "task_file": task_file,
-                "total_tasks": total_tasks,
-                "total_attempts": total_attempts,
-                "passed": passed,
-                "failed": failed,
-                "pass_rate": f"{pass_rate:.4f}",
-                "average_score": f"{average_score:.4f}",
-                "average_latency_sec": f"{average_latency_sec:.3f}",
-                "repeats": repeats,
-            }
-        )
+        writer.writerow(row)
 
     return str(summary_path.resolve())
+
+
+def _normalize_summary_row(row: dict[str, str]) -> dict[str, str]:
+    """Fill Task 16 columns for legacy summary rows."""
+    normalized = {field: row.get(field, "") for field in SUMMARY_FIELDNAMES}
+    if not normalized["total_attempts"]:
+        normalized["total_attempts"] = normalized["total_tasks"]
+    if not normalized["repeats"]:
+        normalized["repeats"] = "1"
+    if not normalized["artifact_count"]:
+        normalized["artifact_count"] = "0"
+    return normalized
 
 
 def sanitize_filename(name: str) -> str:

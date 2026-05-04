@@ -95,12 +95,14 @@ def test_raw_results_and_summary_are_written(monkeypatch, tmp_path):
             "latency_sec": 0.5,
             "score": 1.0,
             "passed": True,
+            "artifact_paths": ["artifacts/suite/t1_response.py"],
         },
         {
             "task_id": "t2",
             "latency_sec": 1.5,
             "score": 0.0,
             "passed": False,
+            "artifact_paths": [],
         },
     ]
     summary = {
@@ -111,6 +113,7 @@ def test_raw_results_and_summary_are_written(monkeypatch, tmp_path):
         "failed": 1,
         "average_score": 0.5,
         "average_latency_sec": 1.0,
+        "results": results,
     }
 
     raw_path = write_run_raw_results(run_dir, results)
@@ -121,6 +124,9 @@ def test_raw_results_and_summary_are_written(monkeypatch, tmp_path):
         "tasks.jsonl",
         "completed",
         repeats=1,
+        suite_info={"id": "reasoning.math", "name": "Math"},
+        started_at="2026-05-03T12:00:00",
+        completed_at="2026-05-03T12:05:00",
     )
 
     raw_lines = (run_dir / "raw.jsonl").read_text(encoding="utf-8").strip().splitlines()
@@ -132,11 +138,23 @@ def test_raw_results_and_summary_are_written(monkeypatch, tmp_path):
     assert summary_path == str((run_dir / "summary.json").resolve())
     assert data["run_id"] == "run-1"
     assert data["model_config_id"] == "model-1"
+    assert data["model_name"] == "Model One"
+    assert data["suite_id"] == "reasoning.math"
+    assert data["suite_name"] == "Math"
     assert data["task_file"] == "tasks.jsonl"
+    assert data["run_folder"] == str(run_dir)
     assert data["status"] == "completed"
+    assert data["total_tasks"] == 2
+    assert data["total_attempts"] == 2
+    assert data["passed"] == 1
+    assert data["failed"] == 1
     assert data["pass_rate"] == 0.5
+    assert data["average_score"] == 0.5
     assert data["average_latency_sec"] == 1.0
     assert data["repeats"] == 1
+    assert data["artifact_count"] == 1
+    assert data["started_at"] == "2026-05-03T12:00:00"
+    assert data["completed_at"] == "2026-05-03T12:05:00"
 
 
 def test_append_run_raw_result_appends_readable_jsonl(monkeypatch, tmp_path):
