@@ -3,3 +3,7 @@ __pycache__/
 
 # Generated benchmark output artifacts
 results/
+
+# Generated official/open-source benchmark imports
+benchmarks/official/*.jsonl
+benchmarks/official/*.json
