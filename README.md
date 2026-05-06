@@ -34,6 +34,12 @@ http://127.0.0.1:8080/v1/chat/completions
 python run_benchmark.py --config configs/qwen-9b-q8-4k.yaml --task-file data/tasks/task_01.jsonl
 ```
 
+Or launch the keyboard-driven terminal UI:
+
+```powershell
+python bench_tui.py
+```
+
 ---
 
 ## Model Configuration
@@ -141,6 +147,39 @@ Stronger coding evaluation with sandboxed tests or LLM-as-judge scoring is futur
 
 ## Usage
 
+### Keyboard terminal UI
+
+The Phase 2 TUI lets you select a model config, check server health, choose one
+or more suites, set repeats and max tasks, run benchmarks, cancel safely, and
+browse previous results:
+
+```powershell
+python bench_tui.py
+```
+
+Keyboard controls:
+
+| Key | Action |
+|-----|--------|
+| Arrow keys / Tab | Move focus or selection |
+| Enter | Confirm the focused action |
+| Escape | Go back to the previous screen |
+| Space | Toggle suite selection |
+| `m` | Open model selection from the dashboard |
+| `s` | Open suite selection from the dashboard |
+| `o` | Open run settings from the dashboard |
+| `h` | Check selected model server health |
+| `b` | Open results browser |
+| `c` | Request cancellation from the progress screen |
+| `r` | Resume a selected incomplete run from the results browser |
+| `q` | Quit |
+
+Smoke-test the TUI without requiring `llama-server`:
+
+```powershell
+python bench_tui.py --smoke-test
+```
+
 ### Basic run
 
 ```powershell
@@ -173,6 +212,11 @@ After a benchmark run, results are written to the `results/` directory:
 
 ```
 results/
+  runs/<model_config_id>/<run_id>/  # Structured Phase 2 run folders
+    manifest.json                   # Run metadata and status
+    raw.jsonl                       # Completed attempts
+    summary.json                    # Per-run aggregate summary
+    artifacts/                      # Coding outputs when applicable
 ├── raw/<model_config_id>/          # Per-task raw results (JSONL)
 │   └── <task_file_stem>_<run_id>.jsonl
 ├── summary.csv                     # Aggregated summary across all runs
@@ -219,6 +263,15 @@ Columns:
 
 Generated automatically after each run. Ranks model configurations by average score, pass rate, and latency. View at `results/reports/leaderboard.md`.
 
+### Manual TUI validation notes
+
+With `llama-server` already running, validate the TUI path by launching
+`python bench_tui.py`, selecting the matching model config, checking health,
+selecting a short suite, running with repeats `1`, and confirming progress,
+score, latency, and output folder updates on the progress screen. Cancel a run
+once to confirm completed attempts remain in `raw.jsonl`, then resume it from
+the results browser.
+
 ---
 
 ## Phase 1 Scope
@@ -256,6 +309,7 @@ python -m pytest tests/ -v
 
 ```
 ├── run_benchmark.py           # Main CLI entry point
+├── bench_tui.py               # Keyboard-driven terminal UI
 ├── runners/
 │   ├── config_loader.py       # YAML config loading
 │   ├── task_loader.py         # JSONL task loading
