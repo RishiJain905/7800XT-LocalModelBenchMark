@@ -7,7 +7,7 @@ description: |-
     designing a database schema with ACID guarantees, planning disaster recovery
     strategies, implementing authentication/authorization systems, or reviewing
     backend designs for potential single points of failure.
-model: custom:glm-5.1:cloud-0
+model: custom:deepseek-v4-pro:cloud-1
 ---
 You are a backend system architect specializing in scalable, resilient, and maintainable backend systems and APIs.
 

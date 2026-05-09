@@ -180,11 +180,19 @@ Smoke-test the TUI without requiring `llama-server`:
 python bench_tui.py --smoke-test
 ```
 
-### Basic run
+### Basic run with a task file
 
 ```powershell
 python run_benchmark.py --config configs/qwen-9b-q8-4k.yaml --task-file data/tasks/task_01.jsonl
 ```
+
+### Run with a named benchmark suite
+
+```powershell
+python run_benchmark.py --config configs/qwen-9b-q8-4k.yaml --suite reasoning.math
+```
+
+Available suites are listed in `benchmarks/suites.yaml`. See [Benchmark Suites](docs/benchmark_suites.md) for details.
 
 ### Run with repeats (reduce noise)
 
@@ -203,6 +211,37 @@ Inspect which tasks and scorers would be used without sending any requests:
 ```powershell
 python run_benchmark.py --config configs/qwen-9b-q8-4k.yaml --task-file data/tasks/task_01.jsonl --dry-run
 ```
+
+### Resume an interrupted run
+
+Resume a run that was cancelled or failed. Completed attempts are preserved and only
+missing attempts are re-run:
+
+```powershell
+python run_benchmark.py --resume results/runs/qwen-9b-q8-4k/2026-05-02_14-30-00
+```
+
+The `--resume` flag must be used by itself (no `--config`, `--task-file`, or `--suite`
+alongside it). The run manifest is read to determine the original config, task file,
+and which attempts are already complete. Results are appended to the existing
+`raw.jsonl` and the summary and leaderboard are regenerated.
+
+In the TUI, resume by opening the Results Browser (press `b`), selecting an incomplete
+run (status `running`, `cancelled`, or `failed`), and pressing `r`.
+
+### CLI argument reference
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--config` | Yes* | Path to YAML model config, or model ID from `configs/models/` |
+| `--task-file` | Yes* | Path to JSONL task file |
+| `--suite` | Yes* | Benchmark suite ID from `benchmarks/suites.yaml` |
+| `--resume` | No | Path to an incomplete run folder (used alone) |
+| `--dry-run` | No | Load config and tasks, print what would run, skip API calls |
+| `--repeats` | No | Repeat count per task (default: 1) |
+
+\* One of `--task-file` or `--suite` is required with `--config`. The `--resume` flag
+is used by itself and does not take `--config`, `--task-file`, or `--suite`.
 
 ---
 
@@ -274,6 +313,64 @@ the results browser.
 
 ---
 
+## Importing Official Benchmarks
+
+The harness includes an import script for converting popular open-source benchmark
+datasets into the harness JSONL task format. Datasets must be obtained separately
+by the user (review licensing terms before use).
+
+### Supported sources
+
+| Source | Type | Import command |
+|--------|------|----------------|
+| GSM8K | Math word problems | `python scripts/import_benchmark.py --source gsm8k --input gsm8k.jsonl --output benchmarks/official/gsm8k_sample.jsonl` |
+| MMLU | Multiple-choice knowledge | `python scripts/import_benchmark.py --source mmlu --input mmlu.csv --output benchmarks/official/mmlu_sample.jsonl` |
+| MBPP | Python coding tasks | `python scripts/import_benchmark.py --source mbpp --input mbpp.jsonl --output benchmarks/official/mbpp_sample.jsonl` |
+| HumanEval | Python function completion | `python scripts/import_benchmark.py --source humaneval --input humaneval.jsonl --output benchmarks/official/humaneval_sample.jsonl` |
+
+### Common options
+
+| Option | Description |
+|--------|-------------|
+| `--input` | Path to the local source dataset file |
+| `--limit N` | Import only the first N records |
+| `--force` | Overwrite output if it already exists |
+
+The imported task file can then be used with the batch CLI:
+
+```powershell
+python run_benchmark.py --config configs/qwen-9b-q8-4k.yaml --task-file benchmarks/official/gsm8k_sample.jsonl
+```
+
+Or registered as a suite by adding an entry to `benchmarks/suites.yaml`.
+
+### Dataset availability notes
+
+The harness does not download datasets automatically. You must obtain the source
+data files yourself and pass them via `--input`. Each source dataset has its own
+license (typically MIT, Apache 2.0, or research-only) — review the terms before
+use.
+
+---
+
+## Known Limitations
+
+- **Coding benchmark scoring**: Coding suite scores are based on lightweight keyword
+  and structure checks only. There is no sandboxed code execution, unit test runner,
+  or LLM-as-judge for coding tasks. Full model responses are always preserved as
+  artifacts for manual review.
+- **Server management**: `llama-server` (or any OpenAI-compatible server) must be
+  started and stopped manually. The benchmark harness does not manage server
+  lifecycle.
+- **No web dashboard**: Results are viewed via the terminal UI, result files on
+  disk, or the Markdown leaderboard. A web dashboard is not included.
+- **No distributed execution**: Runs execute sequentially against a single server
+  endpoint. Distributed runs across multiple machines are not supported.
+- **Single-server focus**: The harness tests one server at a time. There is no
+  built-in support for A/B testing against multiple servers simultaneously.
+
+---
+
 ## Phase 1 Scope
 
 ### Included
@@ -311,19 +408,37 @@ python -m pytest tests/ -v
 ├── run_benchmark.py           # Main CLI entry point
 ├── bench_tui.py               # Keyboard-driven terminal UI
 ├── runners/
+│   ├── benchmark_runner.py    # Core execution engine
 │   ├── config_loader.py       # YAML config loading
 │   ├── task_loader.py         # JSONL task loading
 │   ├── llama_client.py        # OpenAI-compatible API client
-│   ├── result_writer.py       # Raw results + summary CSV
-│   └── leaderboard.py         # Markdown leaderboard generator
+│   ├── result_writer.py       # Run results, manifests, artifacts
+│   ├── model_registry.py      # Model config discovery
+│   ├── suite_registry.py      # Benchmark suite discovery
+│   ├── server_health.py       # Server reachability checks
+│   ├── leaderboard.py         # Markdown leaderboard generator
+│   ├── resume.py              # Run resume helpers
+│   └── validators.py          # Task schema validation
 ├── scorers/
 │   ├── exact_match.py         # Exact text match scorer
 │   ├── numeric_close.py       # Numeric tolerance scorer
 │   ├── keyword_match.py       # Keyword presence scorer
 │   ├── json_valid.py          # JSON tool format scorer
 │   └── registry.py            # Scorer lookup registry
-├── configs/                   # YAML model configs
-├── data/tasks/                # Sample task files (JSONL)
+├── scripts/
+│   └── import_benchmark.py    # Official benchmark importers
+├── configs/
+│   ├── qwen-9b-q8-4k.yaml     # Phase 1 flat config
+│   └── models/                # Phase 2 model configs
+│       └── qwen-9b-q8-4k.yaml
+├── benchmarks/
+│   ├── suites.yaml            # Suite registry
+│   ├── coding/                # Coding task files
+│   ├── reasoning/             # Reasoning task files
+│   ├── tools/                 # Tool calling task files
+│   ├── context/               # Long-context task files
+│   └── official/              # Imported benchmark tasks
+├── docs/                      # User documentation
 ├── tests/                     # Pytest test suite
 └── results/                   # Benchmark output (auto-generated)
 ```

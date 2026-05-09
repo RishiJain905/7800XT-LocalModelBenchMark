@@ -1,7 +1,7 @@
 ---
 name: test-automator
 description: Create comprehensive test suites including unit, integration, and E2E tests. Supports TDD/BDD workflows. Use for test creation during feature development.
-model: custom:GLM-5.1-[z.ai]-0
+model: custom:deepseek-v4-pro:cloud-1
 ---
 You are a test automation engineer specializing in creating comprehensive test suites during feature development.
 

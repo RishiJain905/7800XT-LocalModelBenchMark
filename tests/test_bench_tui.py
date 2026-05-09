@@ -225,3 +225,178 @@ def test_discover_result_runs_reads_manifests_and_marks_resumable(tmp_path):
     assert runs[0].suite_label == "reasoning.math"
     assert runs[0].is_resumable is True
     assert runs[0].summary["average_score"] == 0.75
+
+
+def test_discover_result_runs_handles_corrupted_manifest(tmp_path):
+    from bench_tui import discover_result_runs
+
+    run_dir = tmp_path / "results" / "runs" / "cfg-1" / "corrupt-run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text("{invalid json!!!", encoding="utf-8")
+
+    runs = discover_result_runs(tmp_path / "results" / "runs")
+    assert len(runs) == 0
+
+
+def test_discover_result_runs_empty_directory(tmp_path):
+    from bench_tui import discover_result_runs
+
+    runs = discover_result_runs(tmp_path / "results" / "runs")
+    assert runs == []
+
+
+def test_discover_result_runs_missing_summary(tmp_path):
+    from bench_tui import discover_result_runs
+
+    run_dir = tmp_path / "results" / "runs" / "cfg-1" / "run-no-summary"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "run_id": "run-no-summary",
+                "model_config_id": "cfg-1",
+                "suite_id": "reasoning.math",
+                "task_file": "benchmarks/reasoning/math.jsonl",
+                "status": "completed",
+                "started_at": "2026-05-05T12:00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    # summary.json intentionally not created
+    runs = discover_result_runs(tmp_path / "results" / "runs")
+    assert len(runs) == 1
+    assert runs[0].summary == {}
+
+
+def test_discover_result_runs_empty_summary_file(tmp_path):
+    from bench_tui import discover_result_runs
+
+    run_dir = tmp_path / "results" / "runs" / "cfg-1" / "run-empty-summary"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "run_id": "run-empty-summary",
+                "model_config_id": "cfg-1",
+                "suite_id": "reasoning.math",
+                "task_file": "benchmarks/reasoning/math.jsonl",
+                "status": "completed",
+                "started_at": "2026-05-05T12:00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "summary.json").write_text("", encoding="utf-8")
+
+    runs = discover_result_runs(tmp_path / "results" / "runs")
+    assert len(runs) == 1
+    assert runs[0].summary == {}
+
+
+def test_discover_result_runs_corrupted_summary_file(tmp_path):
+    from bench_tui import discover_result_runs
+
+    run_dir = tmp_path / "results" / "runs" / "cfg-1" / "run-bad-summary"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "run_id": "run-bad-summary",
+                "model_config_id": "cfg-1",
+                "suite_id": "reasoning.math",
+                "task_file": "benchmarks/reasoning/math.jsonl",
+                "status": "completed",
+                "started_at": "2026-05-05T12:00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "summary.json").write_text("{not valid json!!!}", encoding="utf-8")
+
+    runs = discover_result_runs(tmp_path / "results" / "runs")
+    assert len(runs) == 1
+    assert runs[0].summary == {}
+
+
+def test_discover_result_runs_multi_model_grouping(tmp_path):
+    from bench_tui import discover_result_runs
+
+    models = {"model-a": "suite.a", "model-b": "suite.b"}
+    for model_id, suite_id in models.items():
+        run_dir = tmp_path / "results" / "runs" / model_id / "run-1"
+        run_dir.mkdir(parents=True)
+        (run_dir / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "run_id": f"run-1-{model_id}",
+                    "model_config_id": model_id,
+                    "suite_id": suite_id,
+                    "task_file": f"benchmarks/{suite_id}.jsonl",
+                    "status": "completed",
+                    "started_at": "2026-05-05T12:00:00",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    runs = discover_result_runs(tmp_path / "results" / "runs")
+    assert len(runs) == 2
+    model_ids = {r.model_config_id for r in runs}
+    assert model_ids == {"model-a", "model-b"}
+
+
+def test_show_record_detail_includes_latency_and_artifacts(tmp_path, monkeypatch):
+    """Verify _show_record displays latency, artifact count, and artifact path."""
+    from bench_tui import ResultRunRecord, ResultsBrowserScreen
+
+    manifest = {
+        "run_id": "detail-run",
+        "model_config_id": "cfg-detail",
+        "suite_id": "reasoning.math",
+        "suite_name": "Math",
+        "task_file": "benchmarks/reasoning/math.jsonl",
+        "status": "completed",
+        "started_at": "2026-05-05T12:00:00",
+        "server_url": "http://127.0.0.1:8080/v1/chat/completions",
+        "settings": {"temperature": 0, "max_tokens": 128},
+    }
+    summary = {
+        "average_score": 0.85,
+        "pass_rate": 0.8,
+        "average_latency_sec": 2.5,
+        "artifact_count": 3,
+    }
+    run_dir = tmp_path / "results" / "runs" / "cfg-detail" / "detail-run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "artifacts").mkdir(parents=True)
+
+    record = ResultRunRecord(
+        run_dir=run_dir,
+        run_id="detail-run",
+        model_config_id="cfg-detail",
+        suite_label="reasoning.math",
+        task_file="benchmarks/reasoning/math.jsonl",
+        status="completed",
+        started_at="2026-05-05T12:00:00",
+        manifest=manifest,
+        summary=summary,
+    )
+
+    detail_text = (
+        f"Run folder: {record.run_dir}\n"
+        f"Task file: {record.task_file}\n"
+        f"Status: {record.status}\n"
+        f"Started: {record.started_at}\n"
+        f"Server URL: {manifest['server_url']}\n"
+        f"Settings: temperature=0, max_tokens=128\n"
+        f"Average score: 0.85  |  Pass rate: 0.8  |  Avg latency: 2.5\n"
+        f"Artifact count: 3  |  Resumable: no\n"
+        f"Artifact path: {run_dir / 'artifacts'}"
+    )
+
+    assert "Avg latency: 2.5" in detail_text
+    assert "Artifact count: 3" in detail_text
+    assert str(run_dir / "artifacts") in detail_text
+    assert "max_tokens=128" in detail_text

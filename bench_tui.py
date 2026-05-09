@@ -769,22 +769,49 @@ class ResultsBrowserScreen(Screen):
     def on_mount(self) -> None:
         self.records = discover_result_runs()
         table = self.query_one("#runs_table", DataTable)
-        table.add_columns("Run", "Model", "Suite", "Status", "Started")
-        for record in self.records:
-            table.add_row(
-                record.run_id,
-                record.model_config_id,
-                record.suite_label,
-                record.status,
-                record.started_at,
-                key=record.run_id,
-            )
+        table.add_columns("Model", "Run", "Suite", "Status", "Started")
+        self._populate_table(table)
         if self.records:
             table.cursor_type = "row"
             table.move_cursor(row=0)
             self._show_record(self.records[0])
         else:
             self.query_one("#run_detail", Static).update("No runs found.")
+
+    def _populate_table(self, table: DataTable) -> None:
+        """Populate the runs table, grouped by model and sorted by recency."""
+        if not self.records:
+            return
+
+        # sort by model asc, then started_at desc within each model
+        sorted_records = sorted(
+            self.records,
+            key=lambda r: (r.model_config_id, "" if r.started_at else r.started_at),
+        )
+        sorted_records.sort(key=lambda r: r.started_at, reverse=True)
+        sorted_records.sort(key=lambda r: r.model_config_id)
+
+        self.records = sorted_records
+        current_model: str | None = None
+        for record in self.records:
+            if record.model_config_id != current_model:
+                current_model = record.model_config_id
+                # model header row — not selectable
+                table.add_row(
+                    f"[bold]{current_model}[/bold]",
+                    "",
+                    "",
+                    "",
+                    "",
+                )
+            table.add_row(
+                "",
+                record.run_id,
+                record.suite_label,
+                record.status,
+                record.started_at,
+                key=record.run_id,
+            )
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         index = event.cursor_row
@@ -795,12 +822,32 @@ class ResultsBrowserScreen(Screen):
         score = record.summary.get("average_score", "n/a")
         pass_rate = record.summary.get("pass_rate", "n/a")
         resumable = "yes" if record.is_resumable else "no"
+
+        avg_latency = record.summary.get("average_latency_sec", "n/a")
+        artifact_count = record.summary.get("artifact_count", "n/a")
+
+        server_url = record.manifest.get("server_url", "")
+        settings = record.manifest.get("settings", {})
+        settings_str = ", ".join(f"{k}={v}" for k, v in settings.items()) if settings else "n/a"
+
+        artifacts_dir = record.run_dir / "artifacts"
+        artifact_path_str = str(artifacts_dir) if artifacts_dir.is_dir() else "no artifacts folder"
+
+        task_file = record.task_file
+        if not task_file:
+            task_file = record.manifest.get("task_file", "")
+
         self.query_one("#run_detail", Static).update(
             f"Run folder: {record.run_dir}\n"
-            f"Task file: {record.task_file}\n"
-            f"Average score: {score}\n"
-            f"Pass rate: {pass_rate}\n"
-            f"Resumable: {resumable}"
+            f"Task file: {task_file}\n"
+            f"Status: {record.status}\n"
+            f"Started: {record.started_at}\n"
+            f"Server URL: {server_url}\n"
+            f"Settings: {settings_str}\n"
+            f"Average score: {score}  |  Pass rate: {pass_rate}  |  "
+            f"Avg latency: {avg_latency}\n"
+            f"Artifact count: {artifact_count}  |  Resumable: {resumable}\n"
+            f"Artifact path: {artifact_path_str}"
         )
 
     def action_resume(self) -> None:
