@@ -54,3 +54,31 @@ suites:
     task_file: benchmarks/context/long_context.jsonl
     description: Long-context recall and retrieval tasks.
     scoring: deterministic
+
+  - id: official.gsm8k
+    name: GSM8K Sample
+    category: official
+    task_file: benchmarks/official/gsm8k_sample50.jsonl
+    description: 50-task GSM8K sample for safe TUI smoke testing.
+    scoring: deterministic
+
+  - id: official.mmlu
+    name: MMLU Sample
+    category: official
+    task_file: benchmarks/official/mmlu_sample50.jsonl
+    description: 50-task MMLU sample for safe TUI smoke testing.
+    scoring: deterministic
+
+  - id: official.mbpp
+    name: MBPP Sample
+    category: official
+    task_file: benchmarks/official/mbpp_sample50.jsonl
+    description: 50-task MBPP sample for safe TUI smoke testing.
+    scoring: deterministic + artifact
+
+  - id: official.humaneval
+    name: HumanEval Sample
+    category: official
+    task_file: benchmarks/official/humaneval_sample50.jsonl
+    description: 50-task HumanEval sample for safe TUI smoke testing.
+    scoring: deterministic + artifact

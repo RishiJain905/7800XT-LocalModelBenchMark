@@ -7,3 +7,5 @@ results/
 # Generated official/open-source benchmark imports
 benchmarks/official/*.jsonl
 benchmarks/official/*.json
+!benchmarks/official/*_sample50.jsonl
+data/official_sources/

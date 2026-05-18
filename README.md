@@ -194,6 +194,22 @@ python run_benchmark.py --config configs/qwen-9b-q8-4k.yaml --suite reasoning.ma
 
 Available suites are listed in `benchmarks/suites.yaml`. See [Benchmark Suites](docs/benchmark_suites.md) for details.
 
+### Official benchmark samples
+
+The TUI-facing official suites use 50-task samples so accidental runs stay
+manageable:
+
+```text
+official.gsm8k
+official.mmlu
+official.mbpp
+official.humaneval
+```
+
+These sample files are committed under `benchmarks/official/`. Full imported
+official datasets, when present locally, stay ignored by git and should be run
+directly with `--task-file` only when you intentionally want the longer run.
+
 ### Run with repeats (reduce noise)
 
 Each task is run N times to measure response consistency:
@@ -343,6 +359,8 @@ python run_benchmark.py --config configs/qwen-9b-q8-4k.yaml --task-file benchmar
 ```
 
 Or registered as a suite by adding an entry to `benchmarks/suites.yaml`.
+For normal TUI use, prefer the built-in `official.*` sample suites because each
+one is capped at 50 tasks.
 
 ### Dataset availability notes
 

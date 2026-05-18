@@ -33,6 +33,19 @@ from runners.benchmark_runner import BenchmarkCancelled, run_benchmark
 from runners.resume import completed_attempt_key, load_resume_state
 
 
+def _print_text(text: str, file: Any | None = None) -> None:
+    """Print text without crashing on console encodings that cannot represent it."""
+    stream = file or sys.stdout
+    try:
+        print(text, file=stream)
+    except UnicodeEncodeError:
+        encoding = getattr(stream, "encoding", None) or "utf-8"
+        safe_text = text.encode(encoding, errors="replace").decode(
+            encoding, errors="replace"
+        )
+        print(safe_text, file=stream)
+
+
 def _build_summary_from_results(
     results: list[dict[str, Any]],
     run_id: str,
@@ -383,7 +396,7 @@ def main() -> None:
         for task in tasks:
             scorer_name = _resolve_scorer(task)
             description = task["description"]
-            print(f'  {task["id"]}: "{description}" -> {scorer_name}')
+            _print_text(f'  {task["id"]}: "{description}" -> {scorer_name}')
         return
 
     total_attempts = len(tasks) * args.repeats

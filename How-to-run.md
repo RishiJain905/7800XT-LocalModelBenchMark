@@ -146,9 +146,16 @@ coding.backend
 coding.misc
 tools.json_tool_calling
 context.long_context
+official.gsm8k
+official.mmlu
+official.mbpp
+official.humaneval
 ```
 
 For a first real run, start with `reasoning.math` because it is short and deterministic.
+The `official.*` suites are 50-task samples intended to be safe from the TUI.
+Use full imported official task files directly with `--task-file` only when you
+intentionally want a long run.
 
 ## 8. Read Results
 

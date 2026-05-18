@@ -7,6 +7,7 @@ monkey-patching of external dependencies and `sys.argv`.
 from __future__ import annotations
 
 import json
+import io
 import os
 import sys
 from datetime import datetime
@@ -16,7 +17,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 import yaml
 
-from run_benchmark import main
+from run_benchmark import _print_text, main
 from runners.benchmark_runner import (
     _build_error_result,
     _build_result,
@@ -663,6 +664,15 @@ class TestMainArgumentErrors:
 
 class TestMainDryRun:
     """Dry-run mode prints inspection info without calling the model."""
+
+    def test_print_text_replaces_unencodable_console_characters(self):
+        buffer = io.BytesIO()
+        stream = io.TextIOWrapper(buffer, encoding="cp1252", newline="")
+
+        _print_text("unicode: − ➞", file=stream)
+        stream.flush()
+
+        assert buffer.getvalue().decode("cp1252") == "unicode: ? ?\n"
 
     def test_dry_run_output(self, monkeypatch, tmp_path, capsys):
         config_path = tmp_path / "config.yaml"
