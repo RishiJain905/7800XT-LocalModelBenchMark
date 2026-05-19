@@ -8,13 +8,16 @@ from pathlib import Path
 import pytest
 
 from runners.result_writer import (
+    append_reasoning_trace,
     append_run_raw_result,
+    format_run_id,
     build_manifest,
     create_run_folder,
     sanitize_filename,
     save_artifact,
     update_manifest_status,
     write_manifest,
+    write_pretty_raw_results,
     write_run_raw_results,
     write_run_summary,
 )
@@ -42,6 +45,18 @@ def test_create_run_folder_creates_required_structure(monkeypatch, tmp_path):
     assert run_dir == tmp_path / "results" / "runs" / "model-1" / "run-1"
     assert run_dir.exists()
     assert (run_dir / "artifacts").is_dir()
+
+
+def test_format_run_id_includes_readable_sanitized_label():
+    run_id = format_run_id("2026-05-18_16-02-47", "reasoning.math", "abc123ef")
+
+    assert run_id == "2026-05-18_16-02-47_reasoning_math_abc123ef"
+
+
+def test_format_run_id_falls_back_to_timestamp_and_suffix_without_label():
+    run_id = format_run_id("2026-05-18_16-02-47", "", "abc123ef")
+
+    assert run_id == "2026-05-18_16-02-47_abc123ef"
 
 
 def test_manifest_write_and_status_update(monkeypatch, tmp_path):
@@ -139,6 +154,29 @@ def test_raw_results_and_summary_are_written(monkeypatch, tmp_path):
     assert data["repeats"] == 1
 
 
+def test_write_pretty_raw_results_writes_readable_json_array(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    run_dir = create_run_folder("model-1", "run-1")
+    results = [
+        {
+            "task_id": "t1",
+            "prompt": "Question?",
+            "expected": "Answer",
+            "response": "Model answer",
+            "passed": True,
+        }
+    ]
+
+    pretty_path = write_pretty_raw_results(run_dir, results)
+
+    pretty_file = run_dir / "raw_pretty.json"
+    assert pretty_path == str(pretty_file.resolve())
+    text = pretty_file.read_text(encoding="utf-8")
+    assert text.startswith("[\n")
+    assert '  "task_id": "t1"' in text
+    assert json.loads(text) == results
+
+
 def test_append_run_raw_result_appends_readable_jsonl(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     run_dir = create_run_folder("model-1", "run-1")
@@ -169,6 +207,41 @@ def test_append_run_raw_result_flushes_and_fsyncs(monkeypatch, tmp_path):
     assert json.loads((run_dir / "raw.jsonl").read_text(encoding="utf-8")) == {
         "task_id": "t1"
     }
+
+
+def test_append_reasoning_trace_writes_question_answer_and_model_output(
+    monkeypatch, tmp_path
+):
+    monkeypatch.chdir(tmp_path)
+    run_dir = create_run_folder("model-1", "run-1")
+    result = {
+        "task_id": "math_001",
+        "repeat_index": 0,
+        "repeat_count": 1,
+        "prompt": "What is 2 + 2?",
+        "expected": "4",
+        "response": "2 + 2 = 4",
+        "score": 1.0,
+        "passed": True,
+        "latency_sec": 0.25,
+        "reason": "numeric answer matched",
+    }
+
+    trace_path = append_reasoning_trace(run_dir, result)
+
+    trace = (run_dir / "reasoning_trace.md").read_text(encoding="utf-8")
+    assert trace_path == str((run_dir / "reasoning_trace.md").resolve())
+    assert "# Reasoning Trace" in trace
+    assert "## math_001" in trace
+    assert "Status: PASS" in trace
+    assert "### Question" in trace
+    assert "What is 2 + 2?" in trace
+    assert "### Expected Answer" in trace
+    assert "4" in trace
+    assert "### Model Output / Reasoning" in trace
+    assert "2 + 2 = 4" in trace
+    assert "### Scorer Reason" in trace
+    assert "numeric answer matched" in trace
 
 
 def test_sanitize_filename():

@@ -837,16 +837,29 @@ class TestMainFullRun:
         run_dir = run_dirs[0]
         manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
         raw_lines = (run_dir / "raw.jsonl").read_text(encoding="utf-8").splitlines()
+        pretty_raw = json.loads((run_dir / "raw_pretty.json").read_text(encoding="utf-8"))
         summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+        trace = (run_dir / "reasoning_trace.md").read_text(encoding="utf-8")
 
         assert (run_dir / "artifacts").is_dir()
+        assert "_tasks_" in run_dir.name
         assert manifest["status"] == "completed"
         assert manifest["model_config_id"] == "full-cfg"
         assert manifest["completed_at"] is not None
         assert len(raw_lines) == 1
         assert json.loads(raw_lines[0])["task_id"] == "t-01"
+        assert pretty_raw[0]["task_id"] == "t-01"
+        assert pretty_raw[0]["expected"] == "a1"
+        assert pretty_raw[0]["response"] == "answer"
         assert summary["run_id"] == manifest["run_id"]
         assert summary["pass_rate"] == 1.0
+        assert "## t-01" in trace
+        assert "### Question" in trace
+        assert "Q1" in trace
+        assert "### Expected Answer" in trace
+        assert "a1" in trace
+        assert "### Model Output / Reasoning" in trace
+        assert "answer" in trace
 
         out = capsys.readouterr().out
         assert str(run_dir / "raw.jsonl") in out

@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -22,12 +21,15 @@ from runners.config_loader import load_config
 from runners.leaderboard import generate_leaderboard
 from runners.model_registry import get_model_config, list_model_configs
 from runners.result_writer import (
+    append_reasoning_trace,
     append_run_raw_result,
     append_summary,
     build_manifest,
+    build_run_id,
     create_run_folder,
     update_manifest_status,
     write_manifest,
+    write_pretty_raw_results,
     write_run_raw_results,
     write_run_summary,
 )
@@ -205,10 +207,6 @@ def _enrich_run_summary(
     summary_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
-def _build_run_id() -> str:
-    return datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + f"_{uuid.uuid4().hex[:8]}"
-
-
 def execute_suite_run(
     config: dict[str, Any],
     suite: dict[str, Any],
@@ -225,7 +223,7 @@ def execute_suite_run(
     if not tasks:
         raise ValueError(f"Suite '{suite['id']}' has no tasks to run.")
 
-    run_id = _build_run_id()
+    run_id = build_run_id(suite["id"])
     run_dir = create_run_folder(config["id"], run_id)
     started_at = datetime.now().isoformat(timespec="seconds")
     total_attempts = len(tasks) * settings.repeats
@@ -249,6 +247,7 @@ def execute_suite_run(
     def record_result(result: dict[str, Any]) -> None:
         completed_results.append(result)
         append_run_raw_result(run_dir, result)
+        append_reasoning_trace(run_dir, result)
         if progress_callback:
             progress_callback(
                 {
@@ -309,6 +308,7 @@ def execute_suite_run(
             repeats=settings.repeats,
             suite_info=suite_info,
         )
+        write_pretty_raw_results(run_dir, completed_results)
         _enrich_run_summary(
             run_dir,
             status="cancelled",
@@ -335,6 +335,7 @@ def execute_suite_run(
             repeats=settings.repeats,
             suite_info=suite_info,
         )
+        write_pretty_raw_results(run_dir, completed_results)
         _enrich_run_summary(
             run_dir,
             status="failed",
@@ -348,6 +349,7 @@ def execute_suite_run(
     flat_results = summary["results"]
     completed_at = datetime.now().isoformat(timespec="seconds")
     write_run_raw_results(run_dir, flat_results)
+    write_pretty_raw_results(run_dir, flat_results)
     write_run_summary(
         run_dir,
         summary,
@@ -410,6 +412,7 @@ def execute_resume_run(
     def record_result(result: dict[str, Any]) -> None:
         new_results.append(result)
         append_run_raw_result(state.run_dir, result)
+        append_reasoning_trace(state.run_dir, result)
         if progress_callback:
             progress_callback(
                 {
@@ -473,6 +476,7 @@ def execute_resume_run(
             repeats=state.repeats,
             suite_info=suite_info,
         )
+        write_pretty_raw_results(state.run_dir, combined)
         _enrich_run_summary(
             state.run_dir,
             status="cancelled",
@@ -507,6 +511,7 @@ def execute_resume_run(
         repeats=state.repeats,
         suite_info=suite_info,
     )
+    write_pretty_raw_results(state.run_dir, combined)
     _enrich_run_summary(
         state.run_dir,
         status="completed",
@@ -611,8 +616,19 @@ class DashboardScreen(Screen):
         self.app.push_screen(ResultsBrowserScreen())
 
     def action_health(self) -> None:
+        log = self.query_one("#dashboard_log", Log)
+        model_label = (
+            self.app.selected_model.get("id", "none") if self.app.selected_model else "none"
+        )
+        log.write_line(f"Checking server health for {model_label}...")
         self.app.refresh_health()
         self.refresh_status()
+        health = self.app.server_health or {}
+        if health.get("reachable"):
+            log.write_line("Server health: reachable.")
+        else:
+            error = health.get("error") or "server did not report reachable status"
+            log.write_line(f"Server health: unreachable ({error}).")
 
     def action_run(self) -> None:
         self.app.start_selected_run()
@@ -734,7 +750,7 @@ class RunProgressScreen(Screen):
         self.app.progress_screen = self
         if (
             not self.app.smoke_test
-            and self.app.run_worker is None
+            and not self.app.benchmark_running
             and self.app.pending_resume_dir is None
         ):
             self.app.run_selected_suites_worker()
@@ -902,7 +918,7 @@ class BenchmarkTuiApp(App):
         self.latest_outcome: TuiRunOutcome | None = None
         self.cancel_requested = False
         self.progress_screen: RunProgressScreen | None = None
-        self.run_worker = None
+        self.benchmark_running = False
         self.pending_resume_dir: Path | None = None
 
     def compose(self) -> ComposeResult:
@@ -977,7 +993,7 @@ class BenchmarkTuiApp(App):
 
     @work(thread=True, exclusive=True, group="benchmark", exit_on_error=False)
     def run_selected_suites_worker(self) -> None:
-        self.run_worker = True
+        self.benchmark_running = True
         self.cancel_requested = False
         try:
             if not self.selected_model:
@@ -1010,7 +1026,7 @@ class BenchmarkTuiApp(App):
 
     @work(thread=True, exclusive=True, group="benchmark", exit_on_error=False)
     def resume_run_worker(self, run_dir: str | Path) -> None:
-        self.run_worker = True
+        self.benchmark_running = True
         self.cancel_requested = False
         try:
             outcome = execute_resume_run(
@@ -1036,7 +1052,7 @@ class BenchmarkTuiApp(App):
             self.progress_screen.set_status(message)
 
     def _run_finished(self) -> None:
-        self.run_worker = None
+        self.benchmark_running = False
         self.pending_resume_dir = None
         if self.progress_screen:
             self.progress_screen.log_event("Run worker finished.")

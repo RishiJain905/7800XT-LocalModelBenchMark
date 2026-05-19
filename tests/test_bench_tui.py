@@ -109,6 +109,45 @@ def test_registry_load_errors_are_captured_as_app_state(monkeypatch):
     assert any("bad models" in error for error in app.registry_errors)
 
 
+def test_app_keeps_textual_run_worker_method_callable():
+    from bench_tui import BenchmarkTuiApp
+
+    app = BenchmarkTuiApp(smoke_test=True)
+
+    assert callable(app.run_worker)
+
+
+def test_dashboard_health_action_reports_result(monkeypatch):
+    from bench_tui import BenchmarkTuiApp, DashboardScreen
+
+    monkeypatch.setattr(
+        "bench_tui.check_server",
+        lambda _config: {
+            "reachable": True,
+            "server_url": "http://127.0.0.1:8080/v1/chat/completions",
+            "models_endpoint_available": True,
+            "reported_models": ["gemma"],
+            "error": "",
+        },
+    )
+
+    async def run_app() -> None:
+        app = BenchmarkTuiApp(smoke_test=True)
+        app.model_configs = [_make_config()]
+        app.selected_model = app.model_configs[0]
+        async with app.run_test():
+            dashboard = app.screen
+            assert isinstance(dashboard, DashboardScreen)
+
+            dashboard.action_health()
+
+            assert app.server_health is not None
+            assert app.server_health["reachable"] is True
+            assert "Server: reachable" in str(dashboard.query_one("#status").render())
+
+    asyncio.run(run_app())
+
+
 @pytest.mark.parametrize(
     ("repeats", "max_tasks", "expected"),
     [
@@ -184,14 +223,26 @@ def test_execute_suite_run_marks_cancelled_and_writes_partial_summary(tmp_path, 
     )
 
     assert outcome.status == "cancelled"
+    assert "_reasoning_math_" in outcome.run_dir.name
     manifest = json.loads((outcome.run_dir / "manifest.json").read_text(encoding="utf-8"))
     summary = json.loads((outcome.run_dir / "summary.json").read_text(encoding="utf-8"))
     raw_lines = (outcome.run_dir / "raw.jsonl").read_text(encoding="utf-8").splitlines()
+    pretty_raw = json.loads(
+        (outcome.run_dir / "raw_pretty.json").read_text(encoding="utf-8")
+    )
+    trace = (outcome.run_dir / "reasoning_trace.md").read_text(encoding="utf-8")
 
     assert manifest["status"] == "cancelled"
     assert summary["status"] == "cancelled"
     assert summary["passed"] == 1
     assert len(raw_lines) == 1
+    assert pretty_raw[0]["task_id"] == "t-01"
+    assert pretty_raw[0]["expected"] == "ok"
+    assert pretty_raw[0]["response"] == "ok"
+    assert "## t-01" in trace
+    assert "### Question" in trace
+    assert "Say ok" in trace
+    assert "### Model Output / Reasoning" in trace
 
 
 def test_discover_result_runs_reads_manifests_and_marks_resumable(tmp_path):

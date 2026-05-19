@@ -6,10 +6,26 @@ import csv
 import json
 import os
 import re
+import uuid
+from datetime import datetime
 from pathlib import Path
 from statistics import mean
 
 VALID_RUN_STATUSES = {"running", "completed", "cancelled", "failed"}
+
+
+def format_run_id(timestamp: str, label: str, suffix: str) -> str:
+    """Build a readable run id from timestamp, suite/task label, and suffix."""
+    safe_label = sanitize_filename(label.replace(".", "_")).strip("_")
+    if safe_label:
+        return f"{timestamp}_{safe_label}_{suffix}"
+    return f"{timestamp}_{suffix}"
+
+
+def build_run_id(label: str = "") -> str:
+    """Build a unique run id suitable for naming a run folder."""
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    return format_run_id(timestamp, label, uuid.uuid4().hex[:8])
 
 
 def create_run_folder(model_config_id: str, run_id: str) -> Path:
@@ -90,11 +106,54 @@ def write_run_raw_results(run_dir: str | Path, results: list[dict]) -> str:
     return str(path.resolve())
 
 
+def write_pretty_raw_results(run_dir: str | Path, results: list[dict]) -> str:
+    """Write structured raw results to a human-readable JSON file."""
+    path = Path(run_dir) / "raw_pretty.json"
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump(results, fh, indent=2, default=str)
+        fh.write("\n")
+    return str(path.resolve())
+
+
 def append_run_raw_result(run_dir: str | Path, result: dict) -> str:
     """Append one completed attempt to ``raw.jsonl`` and force it to disk."""
     path = Path(run_dir) / "raw.jsonl"
     with path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(result, default=str) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    return str(path.resolve())
+
+
+def append_reasoning_trace(run_dir: str | Path, result: dict) -> str:
+    """Append a human-readable prompt/answer/model-output trace for one attempt."""
+    path = Path(run_dir) / "reasoning_trace.md"
+    is_new = not path.exists() or path.stat().st_size == 0
+    status = "PASS" if result.get("passed") else "FAIL"
+    repeat_index = result.get("repeat_index", 0)
+    repeat_count = result.get("repeat_count", 1)
+
+    with path.open("a", encoding="utf-8", newline="\n") as fh:
+        if is_new:
+            fh.write("# Reasoning Trace\n\n")
+            fh.write(
+                "This file captures each benchmark prompt, expected answer, "
+                "model output, and scorer reason for this run.\n\n"
+            )
+        fh.write(f"## {result.get('task_id', 'unknown')}\n\n")
+        fh.write(f"Status: {status}\n")
+        fh.write(f"Score: {result.get('score', '')}\n")
+        fh.write(f"Latency: {result.get('latency_sec', '')}s\n")
+        fh.write(f"Repeat: {repeat_index + 1}/{repeat_count}\n\n")
+        fh.write("### Question\n\n")
+        fh.write(f"{result.get('prompt', '')}\n\n")
+        fh.write("### Expected Answer\n\n")
+        fh.write(f"{result.get('expected', '')}\n\n")
+        fh.write("### Model Output / Reasoning\n\n")
+        fh.write(f"{result.get('response', '')}\n\n")
+        fh.write("### Scorer Reason\n\n")
+        fh.write(f"{result.get('reason', '')}\n\n")
+        fh.write("---\n\n")
         fh.flush()
         os.fsync(fh.fileno())
     return str(path.resolve())

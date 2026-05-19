@@ -9,7 +9,6 @@ import argparse
 import json
 import os
 import sys
-import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -17,12 +16,15 @@ from typing import Any
 from runners.config_loader import load_config
 from runners.leaderboard import generate_leaderboard
 from runners.result_writer import (
+    append_reasoning_trace,
     append_run_raw_result,
     append_summary,
     build_manifest,
+    build_run_id,
     create_run_folder,
     update_manifest_status,
     write_manifest,
+    write_pretty_raw_results,
     write_raw_results,
     write_run_raw_results,
     write_run_summary,
@@ -145,6 +147,7 @@ def _run_resume(args: argparse.Namespace) -> None:
         counter_state[0] += 1
         new_results.append(result)
         append_run_raw_result(state.run_dir, result)
+        append_reasoning_trace(state.run_dir, result)
         print(
             f"[{idx}/{state.total_attempts}] {result['task_id']}"
             f" (repeat {result['repeat_index'] + 1}/{state.repeats})  "
@@ -173,6 +176,7 @@ def _run_resume(args: argparse.Namespace) -> None:
                 repeats=state.repeats,
                 suite_info=state.suite_info,
             )
+            write_pretty_raw_results(state.run_dir, combined_results)
             update_manifest_status(state.run_dir, "cancelled", completed_at)
         except OSError as exc:
             print(f"Error writing cancelled run metadata: {exc}", file=sys.stderr)
@@ -199,6 +203,7 @@ def _run_resume(args: argparse.Namespace) -> None:
                 repeats=state.repeats,
                 suite_info=state.suite_info,
             )
+            write_pretty_raw_results(state.run_dir, combined_results)
             update_manifest_status(
                 state.run_dir,
                 "failed",
@@ -235,6 +240,7 @@ def _run_resume(args: argparse.Namespace) -> None:
             repeats=state.repeats,
             suite_info=state.suite_info,
         )
+        write_pretty_raw_results(state.run_dir, combined_results)
         update_manifest_status(
             state.run_dir,
             "completed",
@@ -408,6 +414,7 @@ def main() -> None:
         _counter_state[0] += 1
         completed_results.append(result)
         append_run_raw_result(run_dir, result)
+        append_reasoning_trace(run_dir, result)
         print(
             f"[{idx}/{total_attempts}] {result['task_id']}"
             f" (repeat {result['repeat_index'] + 1}/{args.repeats})  "
@@ -415,7 +422,8 @@ def main() -> None:
             f"latency={result['latency_sec']:.2f}s"
         )
 
-    run_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + f"_{uuid.uuid4().hex[:8]}"
+    run_label = suite_info["id"] if suite_info else Path(task_file).stem
+    run_id = build_run_id(run_label)
     options["run_id"] = run_id
     started_at = datetime.now().isoformat(timespec="seconds")
     run_dir = create_run_folder(config["id"], run_id)
@@ -459,6 +467,7 @@ def main() -> None:
                 repeats=args.repeats,
                 suite_info=suite_info,
             )
+            write_pretty_raw_results(run_dir, completed_results)
             update_manifest_status(run_dir, "cancelled", completed_at)
         except OSError as exc:
             print(f"Error writing cancelled run metadata: {exc}", file=sys.stderr)
@@ -485,6 +494,7 @@ def main() -> None:
                 repeats=args.repeats,
                 suite_info=suite_info,
             )
+            write_pretty_raw_results(run_dir, completed_results)
         except OSError as exc:
             print(f"Error writing failed run summary: {exc}", file=sys.stderr)
         update_manifest_status(
@@ -508,6 +518,7 @@ def main() -> None:
 
     try:
         raw_path = write_run_raw_results(run_dir, flat_results)
+        write_pretty_raw_results(run_dir, flat_results)
         write_run_summary(
             run_dir,
             summary,
